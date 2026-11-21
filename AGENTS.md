@@ -23,6 +23,8 @@ git submodule update --init              # 拉 vendor/skills；更新用 git sub
 ## 规则
 
 - 每个新功能在仓库目录之外建 worktree 开发：`git worktree add ../xtra-rsi-<feature> -b <feature> origin/main`；不在当前目录切换分支，不在 `main` 上提交，不 push 到 `main`。push feature 分支后开 PR，CI 通过后合并。
+  - 新 worktree 先 `git submodule update --init && uv sync && uv run pre-commit install`。
+  - 合并后清理：仓库含 submodule，`git worktree remove` 会拒绝，先确认 `git -C <worktree> status --short` 和 `git -C <worktree>/vendor/skills status --short` 都为空，再 `git worktree remove --force <worktree> && git branch -D <feature>`。有未提交内容时不要 `--force`。
 - 不用 `--no-verify` / `SKIP=` / `core.hooksPath` 跳过 hook。
 - 以上由 `.claude/hooks/git_guard.py`（PreToolUse hook）强制；`gh pr merge` 前会跑 `gh pr checks`，没全过就拒绝（ADR 0003、0005）。改这个 hook 前先跑 `uv run pytest tests/test_git_guard.py`：hook 出错会拦下所有 Bash 命令。
 - push 时 pre-push hook 跑 `scripts/review_gate.py`：3 个 Claude 分别从正确性、阶段有效性、下游兼容与流程安全审查 `origin/main` 之后的改动，≥2 个同意才放行。被拒时按输出里的 blocking issues 改完再 push，不要绕过（ADR 0004）。需要本机装好并登录 `claude` CLI。
