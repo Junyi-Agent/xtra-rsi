@@ -1,6 +1,6 @@
 [project]
 name = "xtra-rsi"
-version = "0.4.1"
+version = "0.4.2"
 description = "Recursive Self-Improvement agent framework: observe → reasoning → decision → action → feedback loop"
 readme = "README.md"
 requires-python = ">=3.12"

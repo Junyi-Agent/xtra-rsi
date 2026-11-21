@@ -155,6 +155,9 @@ body { -webkit-user-select: none; user-select: none; background: var(--bg); colo
 .tabs button { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 7px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
 .tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tabs button.miss { opacity: .45; }
+details.ysec { margin: 0 0 10px; }
+details.ysec > summary { cursor: pointer; padding: 4px 0; font-size: 13px; }
+details.ysec.raw > summary b { font-weight: 500; color: var(--muted); }
 pre.y { margin: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: none; }
 .ev { border-left: 3px solid var(--line); padding: 4px 10px; margin: 4px 0; font-size: 12.5px; }
 .ev .kind { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; margin-right: 6px; }
@@ -589,6 +592,17 @@ async function refreshDrawer() {
     lastFullKey = key; full = d; drawDrawer();
   } catch { /* 下一轮再试 */ }
 }
+const secOpen = {};
+function yamlHtml(e) {
+  // 插件给了 sections：按块显示（各自有标题，可折叠），原始文件放最后折叠
+  if (!(e.sections || []).length) return `<pre class="y">${esc(e.yaml)}</pre>`;
+  const blocks = [...e.sections, { title: "原始文件", note: "整个阶段输出", collapsed: true, yaml: e.yaml, raw: true }];
+  return blocks.map((x) => {
+    const k = `${sel.id}/${sel.stage}/${x.title}`;
+    const open = k in secOpen ? secOpen[k] : !x.collapsed;
+    return `<details class="ysec${x.raw ? " raw" : ""}" data-k="${esc(k)}"${open ? " open" : ""}><summary><b>${esc(x.title)}</b>${x.note ? ` <span class="muted">· ${esc(x.note)}</span>` : ""}</summary><pre class="y">${esc(x.yaml)}</pre></details>`;
+  }).join("");
+}
 function drawDrawer() {
   if (!sel) return;
   const l = data.loops.find((x) => x.id === sel.id); if (!l) return;
@@ -614,10 +628,11 @@ function drawDrawer() {
     const e = it && it.stages[sel.stage] && !it.stages[sel.stage].pending ? it.stages[sel.stage] : null;
     const pend = it && it.stages[sel.stage] && it.stages[sel.stage].pending ? it.stages[sel.stage].note : "";
     if (pend) s += `<p>${esc(pend)}</p>`;
-    s += e ? `${e.note ? `<p>${esc(e.note)}</p>` : ""}<div class="muted" style="font-size:12px;margin-bottom:4px">写入于 ${esc(e.mtime)}</div><pre class="y">${esc(e.yaml)}</pre>` : `<div class="muted">${l.state === "running" && l.iteration === sel.iter && l.stage === sel.stage ? "这个阶段正在运行，还没有输出" : "没有这个阶段的输出"}</div>`;
+    s += e ? `${e.note ? `<p>${esc(e.note)}</p>` : ""}<div class="muted" style="font-size:12px;margin-bottom:4px">写入于 ${esc(e.mtime)}</div>${yamlHtml(e)}` : `<div class="muted">${l.state === "running" && l.iteration === sel.iter && l.stage === sel.stage ? "这个阶段正在运行，还没有输出" : "没有这个阶段的输出"}</div>`;
   }
   s += "</div>";
   body.innerHTML = s; body.scrollTop = scroll;
+  for (const d of body.querySelectorAll("details.ysec")) d.ontoggle = () => { secOpen[d.dataset.k] = d.open; };
   for (const b of body.querySelectorAll("#itabs button")) b.onclick = () => { sel.iter = +b.dataset.i; drawDrawer(); };
   for (const b of body.querySelectorAll("#stabs button")) b.onclick = () => { if (b.dataset.s === "__inner") sel.tab = "inner"; else { sel.tab = "stage"; sel.stage = b.dataset.s; } body.scrollTop = 0; drawDrawer(); };
 }

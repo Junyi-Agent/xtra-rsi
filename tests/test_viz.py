@@ -160,6 +160,9 @@ def test_discover_finds_loops_and_nodes(tmp_path: Path) -> None:
     legacy = tmp_path / "old" / "stages" / "iter-0000"
     legacy.mkdir(parents=True)
     _ = (legacy / "observe.yaml").write_text("x: 1\n")
+    # 只有 iter-<n> 目录、里面没有阶段输出的（例如每轮的日志目录）不算 loop
+    (tmp_path / "exp" / "logs" / "iter-0000").mkdir(parents=True)
+    _ = (tmp_path / "exp" / "logs" / "iter-0000" / "observe.jsonl").write_text("{}\n")
     # workspace 下的东西不扫
     _fake_status(tmp_path / "exp" / "workspace" / "c")
     store = NodeStore(tmp_path / "rsi" / "nodes", project_root=tmp_path)
@@ -225,6 +228,30 @@ def test_plugin_describe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     it0 = cast("list[Payload]", d["iterations"])[0]
     assert cast("dict[str, Payload]", it0["stages"])["observe"]["note"] == "看了看"
     assert cast("dict[str, object]", d["inner"])["0"]
+
+
+def test_plugin_sections_split_stage_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def describe(_path: Path, *, detail: bool) -> Payload | None:
+        _ = detail
+        return {
+            "sections": [
+                {"key": "x", "title": "LLM 输出", "note": "原样"},
+                {"key": "missing", "title": "没有"},
+            ]
+        }
+
+    monkeypatch.setattr(data, "_plugins", lambda: [describe])
+    _ = run_loop(toy(), iterations=1, run_dir=tmp_path / "a")
+    d = data.loop_detail("x", tmp_path / "a", full=True)
+    it0 = cast("list[Payload]", d["iterations"])[0]
+    secs = cast("list[Payload]", cast("dict[str, Payload]", it0["stages"])["observe"]["sections"])
+    assert [s["title"] for s in secs] == ["LLM 输出", "其他"]
+    assert secs[0]["note"] == "原样"
+    assert str(secs[0]["yaml"]).startswith("x:")
+    assert "x:" not in str(secs[1]["yaml"]).splitlines()[0]
+    assert data.split_sections({"a": 1}, None) == []
 
 
 def test_plugin_error_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
