@@ -17,7 +17,7 @@ from xtra_rsi.core import STAGE_ORDER, Stage
 AGENTS_MD = "AGENTS.md"
 LOCAL_MD = "AGENTS.local.md"
 SUBDIRS = ("scripts", "evals", "data")
-CASES_FILE = "cases.json"
+CASES_FILE = "cases.yaml"
 
 _GENERATED_MARK = "<!-- xtra-rsi:generated"
 _LOCAL_MARK = "<!-- xtra-rsi:local -->"

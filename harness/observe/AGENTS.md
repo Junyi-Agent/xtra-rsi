@@ -19,11 +19,28 @@
 
 ## 输出
 
-JSON 对象，至少包含：
+一个 YAML 映射（写到 stdout 时可以用 ```yaml 代码块包住），至少包含：
 
 - 透传上一轮 feedback 中后续阶段需要的状态字段（例如当前参数、学习率）。
 - `observations`：观测列表，每条带 `source`。
 - `version`：被改进对象当前版本标识。
+
+示例：
+
+```yaml
+x: 0.42            # 透传的状态
+lr: 0.06
+version: 3f2a9c1
+observations:
+  - source: "runs/iter-0003/feedback.yaml"
+    fact: 上一轮 score 从 -0.12 升到 -0.08
+  - source: "uv run pytest -q tests/test_api.py"
+    fact: 3 个用例失败，均为超时（另有 12 个同类，已去重）
+changes:
+  - 新出现：test_api 超时
+```
+
+布尔值只写 `true` / `false`；含 `:`、`#` 或以特殊字符开头的字符串加引号。
 
 ## 工具与数据
 
@@ -32,7 +49,7 @@ JSON 对象，至少包含：
 
 ## 评估
 
-`evals/cases.json`：把 observe 换成直通后比较最终指标。observe 有效，说明后续阶段确实依赖它采集的信息。
+`evals/cases.yaml`：把 observe 换成直通后比较最终指标。observe 有效，说明后续阶段确实依赖它采集的信息。
 
 ## 不要
 

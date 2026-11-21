@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from xtra_rsi.core import JSON, JSONObject, Profile, Stage, StageContext, run_loop
+from xtra_rsi.core import Profile, Stage, StageContext, run_loop
 from xtra_rsi.registry import load_profile
+from xtra_rsi.yamlio import loads
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from xtra_rsi.payload import Payload
 
-def identity(ctx: StageContext) -> JSONObject:
+
+def identity(ctx: StageContext) -> Payload:
     """直通：原样输出上游 payload，相当于去掉这个阶段。"""
     return dict(ctx.upstream)
 
@@ -25,7 +27,7 @@ def ablate(profile: Profile, stage: Stage) -> Profile:
 
 @dataclass(frozen=True)
 class AblationCase:
-    """``harness/<stage>/evals/cases.json`` 里的一条用例。"""
+    """``harness/<stage>/evals/cases.yaml`` 里的一条用例。"""
 
     name: str
     profile: str
@@ -35,8 +37,8 @@ class AblationCase:
     """full - ablated 至少要达到的差值；指标越大越好。"""
 
     @classmethod
-    def from_json(cls, obj: JSONObject) -> AblationCase:
-        """从 JSON 对象解析，字段缺失或类型错误时抛 ValueError。"""
+    def from_dict(cls, obj: Payload) -> AblationCase:
+        """从映射解析，字段缺失或类型错误时抛 ValueError。"""
         try:
             name, profile, metric = (_req(obj, k, str) for k in ("name", "profile", "metric"))
             iterations = _req(obj, "iterations", int)
@@ -47,7 +49,7 @@ class AblationCase:
         return cls(name, profile, metric, iterations, min_delta)
 
 
-def _req[T](obj: JSONObject, key: str, typ: type[T] | tuple[type, ...]) -> T:
+def _req[T](obj: Payload, key: str, typ: type[T] | tuple[type, ...]) -> T:
     value = obj[key]
     if isinstance(value, bool) or not isinstance(value, typ):
         msg = f"{key!r} 类型应为 {typ}，实际为 {type(value).__name__}"
@@ -56,17 +58,17 @@ def _req[T](obj: JSONObject, key: str, typ: type[T] | tuple[type, ...]) -> T:
 
 
 def load_cases(path: Path) -> list[AblationCase]:
-    """读取用例文件（JSON 数组）。"""
-    raw = cast("JSON", json.loads(path.read_text(encoding="utf-8")))
+    """读取用例文件（列表）。"""
+    raw = loads(path.read_text(encoding="utf-8"), where=str(path))
     if not isinstance(raw, list):
-        msg = f"{path}: 顶层应为数组"
+        msg = f"{path}: 顶层应为列表"
         raise TypeError(msg)
     cases: list[AblationCase] = []
     for item in raw:
         if not isinstance(item, dict):
             msg = f"{path}: 每条用例应为对象"
             raise TypeError(msg)
-        cases.append(AblationCase.from_json(item))
+        cases.append(AblationCase.from_dict(item))
     return cases
 
 
@@ -89,8 +91,8 @@ class AblationResult:
         """阶段是否被证明有效。"""
         return self.delta >= self.case.min_delta
 
-    def to_json(self) -> JSONObject:
-        """转成 JSON 对象，供 CLI 输出。"""
+    def to_dict(self) -> Payload:
+        """转成映射，供 CLI 输出。"""
         return {
             "stage": self.stage.value,
             "case": self.case.name,

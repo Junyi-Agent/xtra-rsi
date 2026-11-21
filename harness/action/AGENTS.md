@@ -18,12 +18,27 @@
 
 ## 输出
 
-JSON 对象，至少包含：
+一个 YAML 映射（写到 stdout 时可以用 ```yaml 代码块包住），至少包含：
 
 - 透传后续阶段需要的状态字段。
 - `executed`：实际执行的步骤和结果。
 - `before` / `after`：执行前后的版本标识。
 - `status`：`done` / `aborted` / `waiting_human`，以及原因。
+
+示例：
+
+```yaml
+x: 0.42
+lr: 0.06
+before: 3f2a9c1
+after: 3f2a9c1+dirty
+status: done
+executed:
+  - step: 修改 configs/client.yaml 的 timeout
+    result: "timeout: 5 → 15"
+```
+
+布尔值只写 `true` / `false`；含 `:`、`#` 或以特殊字符开头的字符串加引号。
 
 ## 工具与数据
 
@@ -32,7 +47,7 @@ JSON 对象，至少包含：
 
 ## 评估
 
-`evals/cases.json`：把 action 换成直通，改动不会落地，最终指标应明显变差。
+`evals/cases.yaml`：把 action 换成直通，改动不会落地，最终指标应明显变差。
 
 ## 不要
 

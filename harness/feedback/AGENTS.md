@@ -20,13 +20,31 @@
 
 ## 输出
 
-JSON 对象，至少包含：
+一个 YAML 映射（写到 stdout 时可以用 ```yaml 代码块包住），至少包含：
 
 - 下一轮需要的状态字段（这是下一轮 observe 的 `upstream`）。
 - `verdict`：`keep` / `rollback`，以及指标前后对比。
 - `lessons`：本轮得到的经验，供 reasoning 查 `history`。
 - `next_focus`：下一轮 observe 的重点。
 - `stop`：是否结束 loop。
+
+示例：
+
+```yaml
+x: 0.45
+lr: 0.072
+verdict:
+  decision: keep
+  metric: test_api 失败数
+  before: 3
+  after: 0
+lessons:
+  - 超时假设成立；大响应仍偏慢，分页可作为后续方向
+next_focus: 关注整体测试耗时是否上升
+stop: false
+```
+
+布尔值只写 `true` / `false`；含 `:`、`#` 或以特殊字符开头的字符串加引号。
 
 ## 工具与数据
 
@@ -35,7 +53,7 @@ JSON 对象，至少包含：
 
 ## 评估
 
-`evals/cases.json`：把 feedback 换成直通，loop 失去自我调整能力，最终指标应明显变差。
+`evals/cases.yaml`：把 feedback 换成直通，loop 失去自我调整能力，最终指标应明显变差。
 
 ## 不要
 

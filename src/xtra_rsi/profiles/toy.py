@@ -17,7 +17,8 @@ from xtra_rsi.core import Profile, Stage, get_float
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from xtra_rsi.core import IterationRecord, JSONObject, StageContext
+    from xtra_rsi.core import IterationRecord, StageContext
+    from xtra_rsi.payload import Payload
 
 TARGET = 0.7
 PROBE_EPS = 1e-3
@@ -31,7 +32,7 @@ def score(x: float) -> float:
     return -((x - TARGET) ** 2)
 
 
-def observe(ctx: StageContext) -> JSONObject:
+def observe(ctx: StageContext) -> Payload:
     """测量当前位置和附近一点的得分。"""
     x = get_float(ctx.upstream, "x", 0.0)
     return {
@@ -42,7 +43,7 @@ def observe(ctx: StageContext) -> JSONObject:
     }
 
 
-def reasoning(ctx: StageContext) -> JSONObject:
+def reasoning(ctx: StageContext) -> Payload:
     """由观测估计梯度。"""
     up = ctx.upstream
     s, probe = up.get("score"), up.get("probe")
@@ -54,7 +55,7 @@ def reasoning(ctx: StageContext) -> JSONObject:
     return {"x": get_float(up, "x", 0.0), "lr": get_float(up, "lr", 0.0), "grad": grad}
 
 
-def decision(ctx: StageContext) -> JSONObject:
+def decision(ctx: StageContext) -> Payload:
     """按学习率决定步长，并限制最大步长。"""
     up = ctx.upstream
     lr = get_float(up, "lr", 0.0)
@@ -62,7 +63,7 @@ def decision(ctx: StageContext) -> JSONObject:
     return {"x": get_float(up, "x", 0.0), "lr": lr, "step": step}
 
 
-def action(ctx: StageContext) -> JSONObject:
+def action(ctx: StageContext) -> Payload:
     """执行：移动到新位置。"""
     up = ctx.upstream
     return {
@@ -72,7 +73,7 @@ def action(ctx: StageContext) -> JSONObject:
     }
 
 
-def feedback(ctx: StageContext) -> JSONObject:
+def feedback(ctx: StageContext) -> Payload:
     """评估结果并自我改进：变好就加大学习率，变差就减小。"""
     up = ctx.upstream
     x = get_float(up, "x", 0.0)

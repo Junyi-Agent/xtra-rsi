@@ -15,7 +15,7 @@ observe → reasoning → decision → action → feedback ─┐
 ```bash
 uv sync
 uv run pre-commit install
-uv run rsi run --profile toy --iterations 10   # 跑示例 loop，每轮一行 JSON
+uv run rsi run --profile toy --iterations 10   # 跑示例 loop，每轮输出一个 YAML 文档
 uv run rsi eval                                # 对五个阶段跑 ablation
 ```
 

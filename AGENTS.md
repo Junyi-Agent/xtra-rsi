@@ -30,8 +30,9 @@ git submodule update --init              # 拉 vendor/skills；更新用 git sub
 - push 时 pre-push hook 跑 `scripts/review_gate.py`：3 个 Claude 分别从正确性、阶段有效性、下游兼容与流程安全审查 `origin/main` 之后的改动，≥2 个同意才放行。被拒时按输出里的 blocking issues 改完再 push，不要绕过（ADR 0004）。需要本机装好并登录 `claude` CLI。
 - 发布：改 `pyproject.toml` 的 `version`，合并后打 `vX.Y.Z` tag，`release.yml` 检查并发布（ADR 0005）。
 - 不用 `# type: ignore` / `# noqa` 绕过检查，确有必要时用带规则名的 `# pyright: ignore[rule]` / `# noqa: RULE` 并在同一行写原因。
-- 新增或修改阶段时，同步更新它的 `evals/cases.json`，并保证 `rsi eval` 通过：ablation 证明不了有效的阶段不应该存在。
+- 新增或修改阶段时，同步更新它的 `evals/cases.yaml`，并保证 `rsi eval` 通过：ablation 证明不了有效的阶段不应该存在。
 - 改 `harness/*/AGENTS.md` 会通过 `rsi sync` 传到所有下游项目，改动要向后兼容；破坏性改动升 minor 版本并在 `docs/downstream.md` 写迁移说明。
-- `Profile`、`StageContext`、`StageFn`、`rsi` 子命令和 `cases.json` 格式是对下游的公开接口，改它们按同样的方式处理。
+- `Profile`、`StageContext`、`StageFn`、`Payload`、`rsi` 子命令和 `cases.yaml` 格式是对下游的公开接口，改它们按同样的方式处理。
 - 流程或架构决策写 ADR（`docs/adr/`）。状态三种：提议 = 只写了文档；采纳 = 允许实现，可能已实现；已验证 = 人类测试了代码并确认。agent 最多改到「采纳」，「已验证」只由人类改。
+- 阶段数据（阶段输出、CommandStage 协议、运行产物、evals 用例、CLI 输出）一律用 YAML，读写走 `xtra_rsi.yamlio`，不直接用 `yaml.safe_load`（它按 YAML 1.1 把 `no` 读成 False、`1:30` 读成 90、日期读成 date）。只有外部工具规定的格式（Claude Code 的 settings.json、pyrightconfig.json、`claude -p` 的输出）保留 JSON（ADR 0006）。
 - loop 运行产物（`runs/`）和 evals 结果（`evals/results/`）不提交。

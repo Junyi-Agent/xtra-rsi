@@ -11,9 +11,9 @@
    └─────────────────────── upstream（下一轮）─────────────────────────┘
 ```
 
-- 每个阶段是一个 `StageFn`：输入 `StageContext`（`stage`、`iteration`、`upstream`、`history`），输出 JSON 对象。
+- 每个阶段是一个 `StageFn`：输入 `StageContext`（`stage`、`iteration`、`upstream`、`history`），输出 `Payload`（键为字符串的映射）。
 - `upstream` 是上一个阶段的输出。observe 的 `upstream` 是上一轮 feedback 的输出，第 0 轮是 `Profile.seed`。
-- 阶段之间只通过 JSON payload 通信，所以每个阶段都能单独替换、单独 ablation，也能写到磁盘复现（`rsi run --run-dir`）。
+- 阶段之间只传 `Payload`，进程外一律序列化为 YAML（`xtra_rsi.yamlio`），所以每个阶段都能单独替换、单独 ablation，也能写到磁盘复现（`rsi run --run-dir`）。
 - feedback 输出 `stop: true` 时 loop 提前结束。
 
 ## 自我改进落在哪里
@@ -29,11 +29,11 @@ loop 改进的对象有两层：
 
 `Profile` = 五个阶段的实现 + `seed` + `metrics`。通过 entry point `xtra_rsi.profiles` 注册，`rsi --profile <name>` 按名字加载。框架自带 `toy`：在一维函数上找最优点，feedback 自适应调学习率，用来示范和测试。
 
-接 LLM agent 时用 `CommandStage`：把阶段 AGENTS.md 全文和 `upstream` 作为 JSON 写进命令的 stdin，命令把阶段输出 JSON 写到 stdout。
+接 LLM agent 时用 `CommandStage`：把阶段 AGENTS.md 全文和 `upstream` 作为 YAML 写进命令的 stdin，命令把阶段输出（YAML 映射，可以包在 ```yaml 代码块里）写到 stdout。
 
 ## 阶段 ablation
 
-`rsi eval <stage>` 读 `harness/<stage>/evals/cases.json`，分别跑完整 profile 和「把该阶段换成直通」的 profile，比较指标：
+`rsi eval <stage>` 读 `harness/<stage>/evals/cases.yaml`，分别跑完整 profile 和「把该阶段换成直通」的 profile，比较指标：
 
 ```
 delta = metric(完整) - metric(去掉该阶段)    通过条件：delta >= min_delta

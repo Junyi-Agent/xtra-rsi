@@ -20,11 +20,31 @@
 
 ## 输出
 
-JSON 对象，至少包含：
+一个 YAML 映射（写到 stdout 时可以用 ```yaml 代码块包住），至少包含：
 
 - 透传后续阶段需要的状态字段。
 - `plan`：`change`、`steps`、`budget`、`success_criteria`、`rollback`、`needs_human`。
 - `rejected`：没选的候选和理由。
+
+示例：
+
+```yaml
+x: 0.42
+lr: 0.06
+plan:
+  change: 把 API 客户端超时从 5s 调到 15s
+  steps:
+    - 修改 configs/client.yaml 的 timeout
+  budget: {files: 1, minutes: 5}
+  success_criteria: tests/test_api.py 全部通过，其他测试不变差
+  rollback: git checkout -- configs/client.yaml
+  needs_human: false
+rejected:
+  - change: 给大响应加分页
+    reason: 置信度低、改动大，先验证超时假设
+```
+
+布尔值只写 `true` / `false`；含 `:`、`#` 或以特殊字符开头的字符串加引号。
 
 ## 工具与数据
 
@@ -33,7 +53,7 @@ JSON 对象，至少包含：
 
 ## 评估
 
-`evals/cases.json`：把 decision 换成直通，action 拿不到计划，最终指标应明显变差。
+`evals/cases.yaml`：把 decision 换成直通，action 拿不到计划，最终指标应明显变差。
 
 ## 不要
 

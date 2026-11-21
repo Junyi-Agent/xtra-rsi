@@ -1,10 +1,8 @@
 """xtra-rsi：Recursive Self-Improvement agent 框架。"""
 
 from xtra_rsi.core import (
-    JSON,
     STAGE_ORDER,
     IterationRecord,
-    JSONObject,
     Metric,
     Profile,
     ProfileError,
@@ -13,17 +11,18 @@ from xtra_rsi.core import (
     StageFn,
     run_loop,
 )
+from xtra_rsi.payload import Payload, Value
 
 __all__ = [
-    "JSON",
     "STAGE_ORDER",
     "IterationRecord",
-    "JSONObject",
     "Metric",
+    "Payload",
     "Profile",
     "ProfileError",
     "Stage",
     "StageContext",
     "StageFn",
+    "Value",
     "run_loop",
 ]

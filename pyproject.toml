@@ -1,10 +1,12 @@
 [project]
 name = "xtra-rsi"
-version = "0.1.0"
+version = "0.2.0"
 description = "Recursive Self-Improvement agent framework: observe → reasoning → decision → action → feedback loop"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pyyaml>=6.0.2",
+]
 
 [project.scripts]
 rsi = "xtra_rsi.cli:main"
@@ -19,6 +21,7 @@ dev = [
   "pre-commit>=4.0",
   "pytest>=8.3",
   "ruff>=0.11",
+  "types-pyyaml>=6.0",
 ]
 
 [build-system]
