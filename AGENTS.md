@@ -13,7 +13,7 @@ Recursive Self-Improvement agent 框架。loop：observe → reasoning → decis
 
 ```bash
 uv sync                                  # 安装依赖（含 dev 组）
-uv run pre-commit install                # 新 clone / 新 worktree 先装 hook（pre-commit + pre-push）
+uv run pre-commit install                # 新 clone 后在主目录装一次 hook（pre-commit + pre-push），worktree 里不要装
 uv run pre-commit run --all-files        # 全量检查：ruff format、ruff check、basedpyright(all)、rsi check、pytest
 uv run rsi eval [stage]                  # 阶段 ablation
 uv run python scripts/smoke_downstream.py  # 构建 wheel 装进临时项目，验证下游接入
@@ -23,7 +23,7 @@ git submodule update --init              # 拉 vendor/skills；更新用 git sub
 ## 规则
 
 - 每个新功能在仓库目录之外建 worktree 开发：`git worktree add ../xtra-rsi-<feature> -b <feature> origin/main`；不在当前目录切换分支，不在 `main` 上提交，不 push 到 `main`。push feature 分支后开 PR，CI 通过后合并。
-  - 新 worktree 先 `git submodule update --init && uv sync && uv run pre-commit install`。
+  - 新 worktree 先 `git submodule update --init && uv sync`。**不要在 worktree 里跑 `pre-commit install`**：git hook 由所有 worktree 共享（`.git/hooks`），install 会把当前 venv 的路径写进 hook，worktree 删掉后所有 hook 都会失效。hook 只在主目录装；失效时在主目录重新跑 `uv run pre-commit install`。
   - 合并后清理：仓库含 submodule，`git worktree remove` 会拒绝，先确认 `git -C <worktree> status --short` 和 `git -C <worktree>/vendor/skills status --short` 都为空，再 `git worktree remove --force <worktree> && git branch -D <feature>`。有未提交内容时不要 `--force`。
 - 不用 `--no-verify` / `SKIP=` / `core.hooksPath` 跳过 hook。
 - 以上由 `.claude/hooks/git_guard.py`（PreToolUse hook）强制；`gh pr merge` 前会跑 `gh pr checks`，没全过就拒绝（ADR 0003、0005）。改这个 hook 前先跑 `uv run pytest tests/test_git_guard.py`：hook 出错会拦下所有 Bash 命令。
