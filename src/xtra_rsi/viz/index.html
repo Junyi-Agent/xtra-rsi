@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSI 面板</title>
+<style>
+:root {
+  --bg: #f4f5f7; --grid: #e3e6eb; --panel: #ffffff; --panel-2: #f7f8fa; --line: #dfe3e8;
+  --text: #1a1d23; --muted: #667085; --faint: #98a2b3; --accent: #3b6fe0; --accent-soft: #dbe6fb;
+  --running: #3b6fe0; --done: #1f9d55; --stopped: #c98208; --failed: #d64545; --lost: #b5478f; --unknown: #8a94a6;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --grid: #1a1e25; --panel: #171a21; --panel-2: #1d2129; --line: #2a303a;
+    --text: #e6e8ec; --muted: #9aa3b2; --faint: #6b7483; --accent: #6b9bff; --accent-soft: #22325a;
+    --running: #6b9bff; --done: #3fbf74; --stopped: #e0a63a; --failed: #f06a6a; --lost: #d77bb8; --unknown: #7d8696;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --grid: #1a1e25; --panel: #171a21; --panel-2: #1d2129; --line: #2a303a;
+  --text: #e6e8ec; --muted: #9aa3b2; --faint: #6b7483; --accent: #6b9bff; --accent-soft: #22325a;
+  --running: #6b9bff; --done: #3fbf74; --stopped: #e0a63a; --failed: #f06a6a; --lost: #d77bb8; --unknown: #7d8696;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+
+#viewport { position: fixed; inset: 0; overflow: hidden; cursor: grab; touch-action: none;
+  background-image: radial-gradient(var(--grid) 1px, transparent 1px); background-size: 24px 24px; }
+#viewport.dragging { cursor: grabbing; }
+#world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+#edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+
+/* 顶栏 */
+#bar { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  pointer-events: none; z-index: 5; }
+#bar > * { pointer-events: auto; }
+.brand { font-weight: 650; letter-spacing: .2px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; box-shadow: var(--shadow); }
+.brand small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: var(--shadow); }
+.pill { border: 0; background: transparent; color: var(--text); border-radius: 7px; padding: 3px 9px; font: inherit; font-size: 13px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.pill:hover { background: var(--panel-2); }
+.pill.off { opacity: .4; }
+.pill b { font-variant-numeric: tabular-nums; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+#search { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; font: inherit; width: 200px; box-shadow: var(--shadow); }
+.tools { margin-left: auto; display: flex; gap: 6px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: var(--shadow); }
+.tools button { border: 0; background: transparent; color: var(--text); border-radius: 7px; padding: 3px 9px; font: inherit; font-size: 13px; cursor: pointer; }
+.tools button:hover { background: var(--panel-2); }
+#zoom { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
+#conn { font-size: 12px; color: var(--muted); padding: 0 6px; }
+#conn.bad { color: var(--failed); }
+#hint { position: fixed; left: 12px; bottom: 12px; color: var(--muted); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; z-index: 5; }
+#empty { position: fixed; inset: 0; display: none; place-items: center; color: var(--muted); text-align: center; z-index: 1; pointer-events: none; }
+#empty code { font-family: var(--mono); background: var(--panel); padding: 2px 6px; border-radius: 4px; }
+
+/* 分组标题 */
+.glabel { position: absolute; transform: translateY(-100%); padding-bottom: 10px; line-height: 1.1; font-size: 22px; font-weight: 650; color: var(--muted); white-space: nowrap; }
+.glabel span { font-weight: 400; font-size: 16px; color: var(--faint); margin-left: 10px; }
+.lod-far .glabel { font-size: 64px; }
+.lod-far .glabel span { font-size: 40px; }
+
+/* 卡片 */
+.card { position: absolute; width: 600px; height: 400px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; cursor: pointer; }
+.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--st); }
+.card.sel { outline: 3px solid var(--accent); outline-offset: 3px; }
+.card.hidden { display: none; }
+.lod-far .card .nf, .card .far { display: none; }
+.lod-far .card .far { display: flex; }
+.lod-mid .card .near-only, .lod-far .card .near-only { display: none; }
+.lod-near .card .mid-only { display: none; }
+
+.far { flex-direction: column; justify-content: center; gap: 22px; padding: 30px 36px; height: 100%; }
+.far .t { font-size: 58px; font-weight: 700; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-all; }
+.far .s { font-size: 40px; color: var(--st); font-weight: 650; display: flex; gap: 14px; align-items: center; }
+.far .s .dot { width: 26px; height: 26px; }
+.far .g { font-size: 32px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.far .big-bar { height: 26px; border-radius: 13px; background: var(--panel-2); overflow: hidden; position: relative; border: 1px solid var(--line); }
+.far .big-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--st); }
+
+.hd { display: flex; gap: 12px; align-items: flex-start; padding: 16px 18px 10px 24px; }
+.hd .ttl { flex: 1; min-width: 0; }
+.hd .ttl b { font-size: 24px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hd .ttl small { color: var(--muted); font-size: 14px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip { font-size: 15px; font-weight: 600; color: var(--st); background: color-mix(in srgb, var(--st) 14%, transparent); border-radius: 999px; padding: 2px 10px; white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+.running .chip .dot { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+.goal { margin: 0 18px 0 24px; padding: 8px 14px; background: var(--panel-2); border-radius: 10px; font-size: 16px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+.goal dt { color: var(--muted); }
+.goal dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal .none { grid-column: 1 / -1; color: var(--faint); }
+
+.body { flex: 1; min-height: 0; display: flex; gap: 14px; padding: 10px 16px 8px 20px; }
+.ring { flex: none; }
+.ring text { font-family: inherit; }
+.side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; justify-content: center; }
+.kpi { font-size: 15px; }
+.kpi .row { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+.kpi .row b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+.bar { height: 7px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); position: relative; overflow: visible; margin-top: 3px; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
+.bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .55; }
+.spark { font-size: 14px; color: var(--muted); }
+.ft { padding: 6px 18px 12px 24px; font-size: 13px; color: var(--muted); display: flex; gap: 12px; white-space: nowrap; overflow: hidden; }
+.ft .err { color: var(--failed); overflow: hidden; text-overflow: ellipsis; }
+
+/* 近景：每轮 × 五个阶段 */
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 30px repeat(5, 1fr); grid-template-rows: 14px; grid-auto-rows: 46px; gap: 3px; font-size: 9px; line-height: 1.3; align-content: start; }
+.grid .h { color: var(--muted); font-weight: 600; text-align: center; font-size: 9px; }
+.grid .it { color: var(--muted); font-variant-numeric: tabular-nums; display: flex; align-items: center; justify-content: center; font-size: 9px; }
+.cell { background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 3px 4px; overflow: hidden; word-break: break-all; }
+.lod-near .goal { font-size: 11px; padding: 5px 10px; }
+.lod-near .ft { font-size: 10px; padding-bottom: 8px; }
+.cell:hover { border-color: var(--accent); }
+.cell.cur { border-color: var(--st); box-shadow: inset 0 0 0 1px var(--st); }
+.cell.miss { background: transparent; border-style: dashed; }
+.cell .k { color: var(--muted); }
+.more { font-size: 9px; color: var(--muted); text-align: center; grid-column: 1 / -1; }
+
+/* 节点 */
+.node { position: absolute; width: 440px; height: 270px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
+.node::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; border-radius: 16px 0 0 16px; background: var(--st); }
+.node .nid { font-size: 18px; font-weight: 700; display: flex; gap: 10px; align-items: center; }
+.node .nid small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.node .rat { font-size: 12px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lod-far .node .nf { display: none; }
+.lod-far .node .nid { font-size: 56px; }
+.node .farg { display: none; font-size: 32px; color: var(--muted); overflow: hidden; display: none; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.lod-far .node .farg { display: -webkit-box; }
+.lod-far .node .chip { font-size: 24px; }
+
+/* 抽屉 */
+#drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(680px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 30px rgba(0,0,0,.12); z-index: 10; transform: translateX(102%); transition: transform .18s ease; display: flex; flex-direction: column; }
+#drawer.open { transform: none; }
+#drawer header { padding: 16px 18px 10px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
+#drawer header .ttl { flex: 1; min-width: 0; }
+#drawer header b { font-size: 17px; display: block; word-break: break-all; }
+#drawer header small { color: var(--muted); display: block; font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+#drawer .x { border: 0; background: var(--panel-2); color: var(--text); border-radius: 8px; width: 30px; height: 30px; font-size: 18px; cursor: pointer; }
+#dbody { flex: 1; overflow: auto; padding: 14px 18px 30px; }
+.sec { margin-bottom: 16px; }
+.sec h4 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; word-break: break-word; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.tabs button { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 7px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tabs button.miss { opacity: .45; }
+pre.y { margin: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: none; }
+.ev { border-left: 3px solid var(--line); padding: 4px 10px; margin: 4px 0; font-size: 12.5px; }
+.ev .kind { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; margin-right: 6px; }
+.ev.tool { border-color: var(--accent); } .ev.tool .kind { color: var(--accent); }
+.ev.result { border-color: var(--faint); } .ev.result .kind { color: var(--muted); }
+.ev.thinking { border-color: var(--stopped); } .ev.thinking .kind { color: var(--stopped); }
+.ev.text .kind { color: var(--done); } .ev.text { border-color: var(--done); }
+.ev.error { border-color: var(--failed); } .ev.error .kind { color: var(--failed); }
+.ev .txt { white-space: pre-wrap; word-break: break-word; }
+.ev details summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
+.ev details pre { font: 11.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; background: var(--panel-2); padding: 6px 8px; border-radius: 6px; }
+.muted { color: var(--muted); }
+
+@media (max-width: 640px) {
+  #search { width: 130px; }
+  #hint { display: none; }
+  .tools { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<div id="viewport"><div id="world"><svg id="edges"></svg></div></div>
+<div id="bar">
+  <div class="brand">RSI 面板<small id="host"></small></div>
+  <div class="pills" id="pills"></div>
+  <input id="search" placeholder="搜索标题、目标、路径" autocomplete="off">
+  <div class="tools">
+    <span id="conn">连接中…</span>
+    <button id="fit" title="适配全部（F）">适配全部</button>
+    <button id="zout" title="缩小">−</button><span id="zoom">100%</span><button id="zin" title="放大">+</button>
+  </div>
+</div>
+<div id="hint">滚轮缩放 · 拖动平移 · 双击卡片聚焦 · 放大到一定程度显示每轮每个阶段 · 点击看详情</div>
+<div id="empty"><div>没有找到 loop。<br>用 <code>rsi viz &lt;目录&gt;</code> 指向含 <code>status.yaml</code> 或 <code>iter-*/</code> 的 run 目录。</div></div>
+<aside id="drawer"><header><div class="ttl"><b id="dtitle"></b><small id="dpath"></small></div><button class="x" id="dclose" title="关闭（Esc）">×</button></header><div id="dbody"></div></aside>
+
+<script>
+"use strict";
+const STAGES = ["observe", "reasoning", "decision", "action", "feedback"];
+const STAGE_ZH = { observe: "观察", reasoning: "推理", decision: "决策", action: "行动", feedback: "反馈" };
+const STATES = {
+  running: "运行中", done: "完成", stopped: "已停止", failed: "失败", lost: "失联", unknown: "无状态",
+};
+const CW = 600, CH = 400, GAP = 56, NW = 440, NH = 270;
+const LOD_FAR = 0.4, LOD_NEAR = 1.3;
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const stColor = (st) => `var(--${STATES[st] ? st : "unknown"})`;
+const store = { get(k) { try { return JSON.parse(localStorage.getItem("rsi-viz:" + k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem("rsi-viz:" + k, JSON.stringify(v)); } catch { /* 无痕模式等 */ } } };
+
+let data = { loops: [], nodes: [] };
+let layoutKey = "";
+let pos = {};            // id → {x, y, w, h}
+let bounds = { x: 0, y: 0, w: 1, h: 1 };
+let view = store.get("view") || null;
+let hiddenStates = new Set(store.get("hidden") || []);
+let query = "";
+const details = {};      // loop id → 摘要 detail
+const detailAt = {};
+let sel = null;          // {id, iter, stage, tab}
+let full = null;
+
+// ---------- 画布：平移、缩放 ----------
+const vp = $("#viewport"), world = $("#world");
+function apply() {
+  world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+  const lod = view.k < LOD_FAR ? "lod-far" : view.k < LOD_NEAR ? "lod-mid" : "lod-near";
+  if (!world.classList.contains(lod)) { world.classList.remove("lod-far", "lod-mid", "lod-near"); world.classList.add(lod); }
+  $("#zoom").textContent = Math.round(view.k * 100) + "%";
+  store.set("view", view);
+  scheduleDetails();
+}
+function zoomAt(cx, cy, factor) {
+  const k = Math.min(5, Math.max(0.04, view.k * factor));
+  view.x = cx - (cx - view.x) * (k / view.k);
+  view.y = cy - (cy - view.y) * (k / view.k);
+  view.k = k; apply();
+}
+function fitRect(r, pad = 60) {
+  const W = vp.clientWidth, H = vp.clientHeight - 60;
+  const k = Math.min(5, Math.max(0.04, Math.min((W - pad * 2) / r.w, (H - pad * 2) / r.h)));
+  view = { k, x: (W - r.w * k) / 2 - r.x * k, y: 60 + (H - r.h * k) / 2 - r.y * k };
+  apply();
+}
+function animateTo(r) {
+  const from = { ...view }; fitRect(r); const to = { ...view }; view = from;
+  const t0 = performance.now();
+  const step = (t) => {
+    const p = Math.min(1, (t - t0) / 260), e = 1 - Math.pow(1 - p, 3);
+    view = { k: from.k * Math.pow(to.k / from.k, e), x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e };
+    apply(); if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+vp.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+  zoomAt(e.clientX, e.clientY, Math.exp(-d * (e.ctrlKey ? 0.01 : 0.0016)));
+}, { passive: false });
+let drag = null;
+vp.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, id: e.pointerId };
+});
+window.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; vp.classList.add("dragging"); vp.setPointerCapture(drag.id); }
+  if (drag.moved) { view.x = drag.vx + dx; view.y = drag.vy + dy; apply(); }
+});
+window.addEventListener("pointerup", () => {
+  if (drag && drag.moved) { vp.classList.remove("dragging"); suppressClick = true; setTimeout(() => (suppressClick = false), 0); }
+  drag = null;
+});
+let suppressClick = false;
+vp.addEventListener("click", (e) => {
+  if (suppressClick) return;
+  const cell = e.target.closest(".cell");
+  const card = e.target.closest(".card");
+  const node = e.target.closest(".node");
+  if (cell && card) openDrawer(card.dataset.id, +cell.dataset.iter, cell.dataset.stage);
+  else if (card) openDrawer(card.dataset.id);
+  else if (node) { const n = data.nodes.find((x) => x.key === node.dataset.key); if (n) openNode(n); }
+});
+vp.addEventListener("dblclick", (e) => {
+  const el = e.target.closest(".card, .node"); if (!el) return;
+  const p = pos[el.dataset.id || el.dataset.key]; if (p) animateTo({ x: p.x - 20, y: p.y - 20, w: p.w + 40, h: p.h + 40 });
+});
+$("#fit").onclick = () => animateTo(bounds);
+$("#zin").onclick = () => zoomAt(vp.clientWidth / 2, vp.clientHeight / 2, 1.3);
+$("#zout").onclick = () => zoomAt(vp.clientWidth / 2, vp.clientHeight / 2, 1 / 1.3);
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "Escape") closeDrawer();
+  if (e.key === "f" || e.key === "F") animateTo(bounds);
+});
+$("#search").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); filter(); });
+window.addEventListener("resize", () => scheduleDetails());
+
+// ---------- 布局 ----------
+function groupsOf(loops) {
+  const g = new Map();
+  for (const l of loops) { const k = l.group || "(未分组)"; if (!g.has(k)) g.set(k, []); g.get(k).push(l); }
+  for (const v of g.values()) v.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+  return [...g.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+function layout() {
+  const key = JSON.stringify([data.loops.map((l) => l.id + "|" + l.group), data.nodes.map((n) => n.key + "|" + n.parent)]);
+  if (key === layoutKey) return false;
+  layoutKey = key;
+  pos = {};
+  for (const el of world.querySelectorAll(".card, .node, .glabel")) el.remove();
+  let y = 0, maxX = 0;
+  // 节点树：深度 → 列，DFS 顺序 → 行
+  if (data.nodes.length) {
+    const kids = new Map(); const roots = [];
+    for (const n of data.nodes) { if (n.parent && data.nodes.some((m) => m.key === n.parent)) { if (!kids.has(n.parent)) kids.set(n.parent, []); kids.get(n.parent).push(n); } else roots.push(n); }
+    y += 90; addLabel("节点树", `${data.nodes.length} 个节点`, 0, y);
+    let row = 0;
+    const place = (n, depth) => {
+      const ch = kids.get(n.key) || [];
+      let yy;
+      if (!ch.length) { yy = y + row * (NH + 40); row++; }
+      else { const ys = ch.map((c) => place(c, depth + 1)); yy = (ys[0] + ys[ys.length - 1]) / 2; }
+      pos[n.key] = { x: depth * (NW + 120), y: yy, w: NW, h: NH };
+      maxX = Math.max(maxX, depth * (NW + 120) + NW);
+      return yy;
+    };
+    roots.forEach((r) => place(r, 0));
+    y += row * (NH + 40) + 80;
+    for (const n of data.nodes) world.appendChild(nodeEl(n));
+  }
+  for (const [name, loops] of groupsOf(data.loops)) {
+    const cols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(loops.length * 1.4))));
+    y += 90; addLabel(name, `${loops.length} 个 loop`, 0, y);
+    loops.forEach((l, i) => {
+      const x = (i % cols) * (CW + GAP), yy = y + Math.floor(i / cols) * (CH + GAP);
+      pos[l.id] = { x, y: yy, w: CW, h: CH };
+      maxX = Math.max(maxX, x + CW);
+      const el = document.createElement("div"); el.className = "card"; el.dataset.id = l.id;
+      el.style.left = x + "px"; el.style.top = yy + "px"; world.appendChild(el);
+    });
+    y += Math.ceil(loops.length / cols) * (CH + GAP) + 50;
+  }
+  bounds = { x: -40, y: -40, w: Math.max(maxX, CW) + 80, h: Math.max(y, CH) + 40 };
+  drawEdges();
+  return true;
+}
+function addLabel(text, sub, x, y) {
+  const el = document.createElement("div"); el.className = "glabel";
+  el.style.left = x + "px"; el.style.top = y + "px";
+  el.innerHTML = `${esc(text)}<span>${esc(sub)}</span>`; world.appendChild(el);
+}
+function drawEdges() {
+  const svg = $("#edges"); let s = "";
+  for (const n of data.nodes) {
+    const a = pos[n.parent], b = pos[n.key]; if (!a || !b) continue;
+    const x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2, mx = (x1 + x2) / 2;
+    s += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="var(--faint)" stroke-width="2.5"/>`;
+    s += `<text x="${mx}" y="${(y1 + y2) / 2 - 8}" fill="var(--muted)" font-size="14" text-anchor="middle">${esc(STAGE_ZH[n.stage] || n.stage || "")}</text>`;
+  }
+  svg.innerHTML = s;
+}
+
+// ---------- 卡片内容 ----------
+function fmt(v) {
+  if (typeof v !== "number") return esc(v);
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2) + "M";
+  if (Math.abs(v) >= 1e4) return (v / 1e3).toFixed(1) + "k";
+  if (Number.isInteger(v)) return String(v);
+  return Math.abs(v) < 2 ? v.toFixed(3) : Math.abs(v) < 100 ? v.toFixed(2) : v.toFixed(1);
+}
+function ago(s) {
+  if (s == null) return "";
+  if (s < 60) return Math.round(s) + " 秒前";
+  if (s < 3600) return Math.round(s / 60) + " 分钟前";
+  return (s / 3600).toFixed(1) + " 小时前";
+}
+function goalRows(goal) {
+  const g = goal || {}; const rows = [];
+  if (g.target != null) rows.push(["在改进", g.target]);
+  if (g.metric != null) rows.push(["指标", g.metric]);
+  // 卡片上只放两行，其余在抽屉里
+  for (const [k, v] of Object.entries(g)) if (k !== "target" && k !== "metric" && rows.length < 2) rows.push([k, typeof v === "object" ? JSON.stringify(v) : v]);
+  return rows;
+}
+function ring(l, size = 168) {
+  const c = size / 2, R = size * 0.36, r = size * 0.115;
+  const cur = l.stage, done = new Set(l.stages_done || []);
+  const finished = l.state !== "running";
+  let s = `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
+  s += `<circle cx="${c}" cy="${c}" r="${R}" fill="none" stroke="var(--line)" stroke-width="2"/>`;
+  STAGES.forEach((st, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    const a2 = -Math.PI / 2 + ((i + 1) * 2 * Math.PI) / 5;
+    // 弧上的箭头：从本阶段指向下一阶段
+    const am = (a + a2) / 2, ax = c + R * Math.cos(am), ay = c + R * Math.sin(am), deg = (am * 180) / Math.PI + 90;
+    s += `<path d="M-4,-3 L4,0 L-4,3" transform="translate(${ax},${ay}) rotate(${deg - 90})" fill="none" stroke="var(--faint)" stroke-width="1.5"/>`;
+    const x = c + R * Math.cos(a), y = c + R * Math.sin(a);
+    const isCur = st === cur && !finished, isDone = done.has(st) && st !== cur;
+    const fill = isCur ? "var(--st)" : isDone ? "var(--accent-soft)" : "var(--panel)";
+    const tc = isCur ? "#fff" : "var(--text)";
+    s += `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${isCur ? "var(--st)" : "var(--line)"}" stroke-width="1.5">${isCur ? `<animate attributeName="r" values="${r};${r * 1.12};${r}" dur="1.6s" repeatCount="indefinite"/>` : ""}</circle>`;
+    s += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="${size * 0.068}" fill="${tc}" font-weight="${isCur ? 700 : 500}">${STAGE_ZH[st]}</text>`;
+  });
+  const it = l.iteration == null ? "–" : l.iteration + 1;
+  const tot = l.iterations ? ` / ${l.iterations}` : "";
+  s += `<text x="${c}" y="${c - 2}" text-anchor="middle" font-size="${size * 0.13}" font-weight="700" fill="var(--text)">${it}<tspan font-size="${size * 0.08}" fill="var(--muted)" font-weight="400">${tot}</tspan></text>`;
+  s += `<text x="${c}" y="${c + size * 0.1}" text-anchor="middle" font-size="${size * 0.065}" fill="var(--muted)">轮</text>`;
+  return s + "</svg>";
+}
+function kpiHtml(k) {
+  const v = k.value, t = k.target;
+  let bar = "";
+  if (typeof v === "number" && typeof t === "number" && t > 0) {
+    const w = Math.max(0, Math.min(1.15, v / t)) / 1.15 * 100, tw = 100 / 1.15;
+    bar = `<div class="bar"><i style="width:${w}%;background:${v >= t ? "var(--done)" : "var(--accent)"}"></i><u style="left:${tw}%"></u></div>`;
+  }
+  return `<div class="kpi"><div class="row"><span>${esc(k.label)}</span><b>${fmt(v)}${k.unit ? " " + esc(k.unit) : ""}${typeof t === "number" ? ` <span class="muted">/ ${fmt(t)}</span>` : ""}</b></div>${bar}</div>`;
+}
+function spark(sr, w = 250, h = 50) {
+  const vals = (sr.values || []).map((v) => (typeof v === "number" ? v : null));
+  const nums = vals.filter((v) => v != null);
+  if (!nums.length) return "";
+  const t = typeof sr.target === "number" ? sr.target : null;
+  const lo = Math.min(0, ...nums, t ?? 0), hi = Math.max(...nums, t ?? -Infinity, lo + 1e-9);
+  const X = (i) => (vals.length === 1 ? w / 2 : 4 + (i * (w - 8)) / (vals.length - 1));
+  const Y = (v) => h - 4 - ((v - lo) / (hi - lo)) * (h - 10);
+  let d = "", pts = "";
+  vals.forEach((v, i) => { if (v == null) return; d += (d ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); pts += `<circle cx="${X(i)}" cy="${Y(v)}" r="2.6" fill="var(--accent)"/>`; });
+  const tl = t != null ? `<line x1="0" x2="${w}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--done)" stroke-dasharray="4 3" stroke-width="1.2"/>` : "";
+  return `<div class="spark">${esc(sr.label)}${t != null ? ` · 目标 ${fmt(t)}` : ""}<svg width="${w}" height="${h}" style="display:block">${tl}<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2"/>${pts}</svg></div>`;
+}
+function gridHtml(l) {
+  const d = details[l.id];
+  if (!d) return `<div class="muted" style="margin:auto">加载每轮数据…</div>`;
+  const its = d.iterations || [];
+  const MAX = 4, shown = its.slice(-MAX);
+  let s = `<div class="grid"><div></div>${STAGES.map((st) => `<div class="h">${STAGE_ZH[st]}</div>`).join("")}`;
+  if (!shown.length) s += `<div class="more">还没有阶段输出</div>`;
+  for (const it of shown) {
+    s += `<div class="it">#${it.iteration + 1}</div>`;
+    for (const st of STAGES) {
+      const e = it.stages[st];
+      const cur = l.state === "running" && l.iteration === it.iteration && l.stage === st;
+      if (!e || e.pending) { s += `<div class="cell miss${cur ? " cur" : ""}" data-iter="${it.iteration}" data-stage="${st}">${e && e.note ? esc(e.note) : cur ? "运行中…" : ""}</div>`; continue; }
+      const body = e.note ? esc(e.note) : e.summary.map(([k, v]) => `<span class="k">${esc(k)}</span> ${esc(v)}`).join("<br>");
+      s += `<div class="cell${cur ? " cur" : ""}" data-iter="${it.iteration}" data-stage="${st}">${body}</div>`;
+    }
+  }
+  s += "</div>";
+  if (its.length > MAX) s += `<div class="more">只显示最后 ${MAX} 轮，共 ${its.length} 轮；点击卡片看全部</div>`;
+  return s;
+}
+function cardHtml(l) {
+  const st = STATES[l.state] ? l.state : "unknown";
+  const gr = goalRows(l.goal);
+  const k0 = (l.kpis || []).find((k) => typeof k.value === "number" && typeof k.target === "number");
+  const itText = l.iteration == null ? "" : `第 ${l.iteration + 1}${l.iterations ? "/" + l.iterations : ""} 轮`;
+  const far = `<div class="far"><div class="t">${esc(l.title)}</div>
+    <div class="s"><span class="dot" style="background:var(--st)"></span>${STATES[st]}${itText ? ` · ${itText}` : ""}${l.stage && st === "running" ? ` · ${STAGE_ZH[l.stage] || l.stage}` : ""}</div>
+    ${gr.length ? `<div class="g">${esc(gr[0][1])}</div>` : ""}
+    ${k0 ? `<div class="big-bar"><i style="width:${Math.min(100, (k0.value / k0.target) * 100)}%"></i></div>` : ""}</div>`;
+  const hd = `<div class="hd nf"><div class="ttl"><b>${esc(l.title)}</b><small>${esc(l.subtitle || l.path)}</small></div>
+    <span class="chip"><span class="dot" style="background:var(--st)"></span>${STATES[st]}${st === "running" && l.stage ? " · " + (STAGE_ZH[l.stage] || l.stage) : ""}</span></div>
+    <dl class="goal nf">${gr.length ? gr.map(([k, v]) => `<dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join("") : `<span class="none">没有 goal（旧 run 或 profile 没设置 Profile.goal）</span>`}</dl>`;
+  const side = `${(l.kpis || []).slice(0, 4).map(kpiHtml).join("")}${(l.series || []).slice(0, 1).map((s) => spark(s)).join("")}`;
+  const mid = `<div class="body nf mid-only">${ring(l, 200)}<div class="side">${side || `<div class="muted">没有指标（没有装对应的 viz 插件）</div>`}</div></div>`;
+  const near = `<div class="body nf near-only" style="flex-direction:column;gap:6px">${gridHtml(l)}</div>`;
+  const ft = `<div class="ft nf">${l.started_at ? `<span>开始 ${esc(l.started_at.replace("T", " ").slice(0, 16))}</span>` : ""}${l.heartbeat_age_s != null && st === "running" ? `<span>心跳 ${ago(l.heartbeat_age_s)}</span>` : ""}${l.pid ? `<span>pid ${esc(l.pid)}@${esc(l.host)}</span>` : ""}${l.reason ? `<span>原因：${esc(l.reason)}</span>` : ""}${l.error || l.plugin_error ? `<span class="err" title="${esc(l.error || l.plugin_error)}">${esc(l.error || "插件：" + l.plugin_error)}</span>` : ""}</div>`;
+  return far + hd + mid + near + ft;
+}
+function nodeEl(n) {
+  const el = document.createElement("div"); el.className = "node"; el.dataset.key = n.key;
+  const p = pos[n.key]; el.style.left = p.x + "px"; el.style.top = p.y + "px";
+  fillNode(el, n); return el;
+}
+function nodeSt(s) { return { running: "running", done: "done", proposed: "stopped", pending_approval: "stopped", rejected: "failed", retired: "unknown" }[s] || "unknown"; }
+const NODE_ZH = { running: "运行中", done: "完成", proposed: "已提案", pending_approval: "等人审批", rejected: "已拒绝", retired: "已撤销" };
+function fillNode(el, n) {
+  el.style.setProperty("--st", stColor(nodeSt(n.status)));
+  const b = n.budget_usd || 0, sp = n.spent_usd || 0, al = n.allocated_usd || 0;
+  el.innerHTML = `<div class="nid">${esc(n.id)}<small>${n.stage ? "改进父节点的" + esc(STAGE_ZH[n.stage] || n.stage) : "根节点"}</small><span class="chip" style="margin-left:auto"><span class="dot" style="background:var(--st)"></span>${esc(NODE_ZH[n.status] || n.status)}</span></div>
+    <div class="farg">${esc(n.target)} · ${esc(n.metric)}</div>
+    <dl class="goal nf" style="margin:0"><dt>在改进</dt><dd>${esc(n.target)}</dd><dt>指标</dt><dd>${esc(n.metric)}</dd></dl>
+    <div class="kpi nf"><div class="row"><span>预算</span><b>$${fmt(sp)} 已花 · $${fmt(al)} 划给子节点 · 共 $${fmt(b)}</b></div>
+      <div class="bar"><i style="width:${b ? Math.min(100, (sp / b) * 100) : 0}%"></i><i style="left:${b ? Math.min(100, (sp / b) * 100) : 0}%;width:${b ? Math.min(100, (al / b) * 100) : 0}%;background:var(--stopped);opacity:.6"></i></div></div>
+    ${n.rationale ? `<div class="rat nf">${esc(n.rationale)}</div>` : ""}
+    <div class="muted nf" style="font-size:12px;margin-top:auto">${(n.loops || []).length} 次运行</div>`;
+}
+function render() {
+  const relaid = layout();
+  for (const l of data.loops) {
+    const el = world.querySelector(`.card[data-id="${l.id}"]`); if (!el) continue;
+    el.className = "card " + (STATES[l.state] ? l.state : "unknown") + (sel && sel.id === l.id ? " sel" : "");
+    el.style.setProperty("--st", stColor(l.state));
+    el.innerHTML = cardHtml(l);
+  }
+  for (const n of data.nodes) { const el = world.querySelector(`.node[data-key="${CSS.escape(n.key)}"]`); if (el) fillNode(el, n); }
+  renderPills(); filter();
+  $("#empty").style.display = data.loops.length || data.nodes.length ? "none" : "grid";
+  if (relaid && needFit && (data.loops.length || data.nodes.length)) { fitRect(bounds); needFit = false; } else if (relaid) apply();
+}
+function renderPills() {
+  const counts = {};
+  for (const l of data.loops) counts[l.state] = (counts[l.state] || 0) + 1;
+  $("#pills").innerHTML = Object.keys(STATES).filter((s) => counts[s]).map((s) =>
+    `<button class="pill${hiddenStates.has(s) ? " off" : ""}" data-s="${s}"><span class="dot" style="background:${stColor(s)}"></span>${STATES[s]} <b>${counts[s]}</b></button>`).join("") || `<span class="pill">0 个 loop</span>`;
+  for (const b of $("#pills").querySelectorAll("button")) b.onclick = () => {
+    const s = b.dataset.s; hiddenStates.has(s) ? hiddenStates.delete(s) : hiddenStates.add(s);
+    store.set("hidden", [...hiddenStates]); renderPills(); filter();
+  };
+}
+function filter() {
+  for (const l of data.loops) {
+    const el = world.querySelector(`.card[data-id="${l.id}"]`); if (!el) continue;
+    const hay = [l.title, l.subtitle, l.path, l.group, JSON.stringify(l.goal)].join(" ").toLowerCase();
+    el.classList.toggle("hidden", hiddenStates.has(l.state) || (query && !hay.includes(query)));
+  }
+}
+
+// ---------- 数据 ----------
+async function getJSON(url) { const r = await fetch(url, { cache: "no-store" }); if (!r.ok) throw new Error(r.status + " " + url); return r.json(); }
+async function poll() {
+  try {
+    data = await getJSON("/api/loops");
+    $("#host").textContent = data.host ? "@ " + data.host : "";
+    $("#conn").textContent = "更新于 " + new Date().toLocaleTimeString();
+    $("#conn").classList.remove("bad");
+    render();
+    if (sel) refreshDrawer();
+  } catch (e) {
+    $("#conn").textContent = "连接失败，重试中"; $("#conn").classList.add("bad");
+  }
+  setTimeout(poll, 2500);
+}
+let detailTimer = 0;
+function scheduleDetails() { clearTimeout(detailTimer); detailTimer = setTimeout(loadVisibleDetails, 120); }
+async function loadVisibleDetails() {
+  if (view.k < LOD_NEAR) return;
+  const W = vp.clientWidth, H = vp.clientHeight, now = Date.now();
+  const want = data.loops.filter((l) => {
+    const p = pos[l.id]; if (!p) return false;
+    const x = p.x * view.k + view.x, y = p.y * view.k + view.y;
+    return x < W && y < H && x + p.w * view.k > 0 && y + p.h * view.k > 0 && (!detailAt[l.id] || now - detailAt[l.id] > 4000);
+  }).slice(0, 24);
+  await Promise.all(want.map(async (l) => {
+    detailAt[l.id] = now;
+    try {
+      details[l.id] = await getJSON("/api/loop?id=" + encodeURIComponent(l.id));
+      const el = world.querySelector(`.card[data-id="${l.id}"] .near-only`);
+      if (el) el.innerHTML = gridHtml(l);
+    } catch { /* 下一轮再试 */ }
+  }));
+}
+setInterval(scheduleDetails, 4000);
+
+// ---------- 抽屉 ----------
+function openDrawer(id, iter, stage) {
+  const l = data.loops.find((x) => x.id === id); if (!l) return;
+  sel = { id, iter: iter ?? (l.iteration ?? 0), stage: stage || l.stage || "observe", tab: "stage" };
+  full = null;
+  for (const c of world.querySelectorAll(".card.sel")) c.classList.remove("sel");
+  world.querySelector(`.card[data-id="${id}"]`)?.classList.add("sel");
+  $("#drawer").classList.add("open");
+  drawDrawer(); refreshDrawer();
+}
+function openNode(n) {
+  sel = null; full = null;
+  $("#drawer").classList.add("open");
+  $("#dtitle").textContent = "节点 " + n.id;
+  $("#dpath").textContent = n.key;
+  const kv = Object.entries(n).filter(([k]) => k !== "loops" && k !== "key").map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(typeof v === "object" ? JSON.stringify(v) : v)}</dd>`).join("");
+  const runs = (n.loops || []).map((id) => { const l = data.loops.find((x) => x.id === id); return l ? `<button data-id="${id}">${esc(l.title)}</button>` : ""; }).join("");
+  $("#dbody").innerHTML = `<div class="sec"><h4>节点</h4><dl class="kv">${kv}</dl></div><div class="sec"><h4>运行</h4><div class="tabs">${runs || '<span class="muted">还没有运行</span>'}</div></div>`;
+  for (const b of $("#dbody").querySelectorAll("button[data-id]")) b.onclick = () => { const p = pos[b.dataset.id]; if (p) animateTo({ x: p.x - 20, y: p.y - 20, w: p.w + 40, h: p.h + 40 }); openDrawer(b.dataset.id); };
+}
+function closeDrawer() {
+  sel = null; $("#drawer").classList.remove("open");
+  for (const c of world.querySelectorAll(".card.sel")) c.classList.remove("sel");
+}
+$("#dclose").onclick = closeDrawer;
+let lastFullKey = "";
+async function refreshDrawer() {
+  if (!sel) return;
+  try {
+    const d = await getJSON(`/api/loop?id=${encodeURIComponent(sel.id)}&full=1`);
+    const key = JSON.stringify(d);
+    if (key === lastFullKey && full) return;
+    lastFullKey = key; full = d; drawDrawer();
+  } catch { /* 下一轮再试 */ }
+}
+function drawDrawer() {
+  if (!sel) return;
+  const l = data.loops.find((x) => x.id === sel.id); if (!l) return;
+  $("#dtitle").textContent = l.title;
+  $("#dpath").textContent = l.path;
+  const body = $("#dbody"), scroll = body.scrollTop;
+  const meta = [["状态", STATES[l.state] || l.state], ["当前", l.iteration != null ? `第 ${l.iteration + 1}${l.iterations ? "/" + l.iterations : ""} 轮 · ${STAGE_ZH[l.stage] || l.stage || "-"}` : "-"],
+    ["profile", l.profile], ["进程", l.pid ? `${l.pid}@${l.host}` : null], ["开始", l.started_at], ["心跳", l.heartbeat_age_s != null ? ago(l.heartbeat_age_s) : null],
+    ["原因", l.reason], ["错误", l.error], ["插件错误", l.plugin_error]].filter(([, v]) => v != null && v !== "");
+  const goal = Object.entries(l.goal || {}).map(([k, v]) => `<dt>${esc(k === "target" ? "在改进" : k === "metric" ? "指标" : k)}</dt><dd>${esc(typeof v === "object" ? JSON.stringify(v) : v)}</dd>`).join("");
+  let s = `<div class="sec"><h4>目标</h4>${goal ? `<dl class="kv">${goal}</dl>` : '<div class="muted">没有 goal</div>'}</div>`;
+  s += `<div class="sec"><h4>运行</h4><dl class="kv">${meta.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>`;
+  if ((l.kpis || []).length || (l.series || []).length) s += `<div class="sec"><h4>指标</h4>${(l.kpis || []).map(kpiHtml).join("")}${(l.series || []).map((x) => spark(x, 600, 80)).join("")}</div>`;
+  if (!full) { body.innerHTML = s + '<div class="muted">加载中…</div>'; return; }
+  const its = full.iterations || [];
+  s += `<div class="sec"><h4>轮次</h4><div class="tabs" id="itabs">${its.map((it) => `<button data-i="${it.iteration}" class="${it.iteration === sel.iter ? "on" : ""}">#${it.iteration + 1}</button>`).join("") || '<span class="muted">还没有阶段输出</span>'}</div>`;
+  const it = its.find((x) => x.iteration === sel.iter);
+  const inner = (full.inner || {})[String(sel.iter)] || [];
+  s += `<div class="tabs" id="stabs">${STAGES.map((st) => `<button data-s="${st}" class="${sel.tab === "stage" && st === sel.stage ? "on" : ""}${it && it.stages[st] && !it.stages[st].pending ? "" : " miss"}">${STAGE_ZH[st]} ${st}</button>`).join("")}${inner.length ? `<button data-s="__inner" class="${sel.tab === "inner" ? "on" : ""}">内部过程 · ${inner.length}</button>` : ""}</div>`;
+  if (sel.tab === "inner") {
+    s += inner.map((e) => `<div class="ev ${esc(e.kind)}"><span class="kind">${esc(e.kind)}</span><span class="txt">${esc(e.text)}</span>${e.detail ? `<details><summary>展开</summary><pre>${esc(e.detail)}</pre></details>` : ""}</div>`).join("");
+  } else {
+    const e = it && it.stages[sel.stage] && !it.stages[sel.stage].pending ? it.stages[sel.stage] : null;
+    const pend = it && it.stages[sel.stage] && it.stages[sel.stage].pending ? it.stages[sel.stage].note : "";
+    if (pend) s += `<p>${esc(pend)}</p>`;
+    s += e ? `${e.note ? `<p>${esc(e.note)}</p>` : ""}<div class="muted" style="font-size:12px;margin-bottom:4px">写入于 ${esc(e.mtime)}</div><pre class="y">${esc(e.yaml)}</pre>` : `<div class="muted">${l.state === "running" && l.iteration === sel.iter && l.stage === sel.stage ? "这个阶段正在运行，还没有输出" : "没有这个阶段的输出"}</div>`;
+  }
+  s += "</div>";
+  body.innerHTML = s; body.scrollTop = scroll;
+  for (const b of body.querySelectorAll("#itabs button")) b.onclick = () => { sel.iter = +b.dataset.i; drawDrawer(); };
+  for (const b of body.querySelectorAll("#stabs button")) b.onclick = () => { if (b.dataset.s === "__inner") sel.tab = "inner"; else { sel.tab = "stage"; sel.stage = b.dataset.s; } body.scrollTop = 0; drawDrawer(); };
+}
+
+let needFit = !view;
+if (!view) view = { k: 0.5, x: 40, y: 80 };
+apply();
+poll();
+</script>
+</body>
+</html>

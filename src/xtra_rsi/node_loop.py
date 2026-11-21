@@ -92,6 +92,16 @@ def run_node(  # noqa: PLR0913 -- 后几个都是 keyword-only，打包成对象
         return out
 
     seeded = profile.with_seed({**profile.seed, NODE_KEY: store.view(node_id).to_dict()})
+    # status.yaml 里的 goal：节点的约定优先，profile 自己的 goal 补充
+    seeded = seeded.with_goal(
+        {
+            **profile.goal,
+            "node": node_id,
+            "target": node.target,
+            "metric": node.metric,
+            "budget_usd": node.budget_usd,
+        }
+    )
     records = run_loop(seeded, iterations=iterations, run_dir=run_dir, on_output=on_output)
     spent = store.get(node_id).spent_usd - spent_before
     return NodeRunResult(records=records, stopped=stopped[0] if stopped else None, spent_usd=spent)

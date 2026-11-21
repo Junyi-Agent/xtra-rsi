@@ -103,4 +103,5 @@ def profile() -> Profile:
         },
         seed={"x": 0.0, "lr": 0.05},
         metrics={"final_score": final_score},
+        goal={"target": "一维变量 x", "metric": "score(x) = -(x - TARGET)**2，越大越好"},
     )

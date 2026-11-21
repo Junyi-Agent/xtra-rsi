@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
+from xtra_rsi.status import NullStatus, RunState, StatusWriter
 from xtra_rsi.yamlio import dump as yaml_dump
 
 if TYPE_CHECKING:
@@ -89,6 +90,11 @@ class Profile:
     seed: Payload = field(default_factory=dict[str, "Value"])
     """第 0 轮 observe 的 upstream。"""
     metrics: Mapping[str, Metric] = field(default_factory=dict[str, Metric])
+    goal: Payload = field(default_factory=dict[str, "Value"])
+    """这个 loop 在改进什么，写进 ``status.yaml`` 给人和 ``rsi viz`` 看。
+
+    约定键：``target``（改进的对象）、``metric``（怎么衡量），其余键自由。
+    """
 
     def __post_init__(self) -> None:
         """检查五个阶段都有实现。"""
@@ -106,6 +112,10 @@ class Profile:
     def with_seed(self, seed: Payload) -> Profile:
         """返回换了 seed 的新 profile。"""
         return replace(self, seed=seed)
+
+    def with_goal(self, goal: Payload) -> Profile:
+        """返回换了 goal 的新 profile。"""
+        return replace(self, goal=goal)
 
 
 class StopLoop(Exception):  # noqa: N818 -- 是控制流信号，不是错误
@@ -140,7 +150,8 @@ def run_loop(
     """运行 loop。
 
     ``run_dir`` 不为 None 时把每个阶段的输出写到
-    ``run_dir/iter-<n>/<stage>.yaml``。feedback 输出里 ``stop_key`` 为真时提前结束。
+    ``run_dir/iter-<n>/<stage>.yaml``，并在 ``run_dir/status.yaml`` 维护运行状态和心跳
+    （见 :mod:`xtra_rsi.status`）。feedback 输出里 ``stop_key`` 为真时提前结束。
 
     ``on_output`` 不为 None 时，每个阶段的输出先经过它再写盘和传给下一阶段。它抛出
     :class:`StopLoop` 时 loop 停止，返回已完成的迭代；未完成那一轮的输出已写盘但不在返回值里。
@@ -148,34 +159,63 @@ def run_loop(
     if iterations < 0:
         msg = f"iterations 必须 >= 0，收到 {iterations}"
         raise ValueError(msg)
+    if run_dir is None:
+        return _loop(
+            profile, iterations, None, NullStatus(), stop_key=stop_key, on_output=on_output
+        )
+    with StatusWriter(
+        run_dir, profile=profile.name, goal=profile.goal, iterations=iterations
+    ) as status:
+        return _loop(profile, iterations, run_dir, status, stop_key=stop_key, on_output=on_output)
+
+
+def _loop(  # noqa: PLR0913 -- run_loop 的内部实现，参数与它一一对应
+    profile: Profile,
+    iterations: int,
+    run_dir: Path | None,
+    status: StatusWriter | NullStatus,
+    *,
+    stop_key: str,
+    on_output: OutputHook | None,
+) -> list[IterationRecord]:
     records: list[IterationRecord] = []
     upstream: Payload = dict(profile.seed)
     for i in range(iterations):
         outputs: dict[Stage, Payload] = {}
         for stage in STAGE_ORDER:
+            status.stage(i, stage.value)
             ctx = StageContext(stage=stage, iteration=i, upstream=upstream, history=tuple(records))
-            out = profile.stages[stage](ctx)
-            if not isinstance(out, dict):  # pyright: ignore[reportUnnecessaryIsInstance] -- 运行时防御第三方实现
-                msg = f"{profile.name}.{stage.value} 返回了 {type(out).__name__}，应为 dict"
-                raise StageOutputError(msg)
-            stop = False
-            if on_output is not None:
-                try:
-                    out = on_output(ctx, out)
-                except StopLoop as e:
-                    stop = True
-                    out = e.payload if e.payload is not None else out
-            outputs[stage] = out
+            upstream, stop = _run_stage(profile, ctx, on_output)
+            outputs[stage] = upstream
             if run_dir is not None:
-                _write_yaml(run_dir / f"iter-{i:04d}" / f"{stage.value}.yaml", out)
-            upstream = out
-            if stop:
+                _write_yaml(run_dir / f"iter-{i:04d}" / f"{stage.value}.yaml", upstream)
+            if stop is not None:
+                status.finish(RunState.STOPPED, reason=stop)
                 return records
         record = IterationRecord(iteration=i, outputs=outputs)
         records.append(record)
         if record.last.get(stop_key) is True:
-            break
+            reason = record.last.get("reason")
+            status.finish(RunState.DONE, reason=reason if isinstance(reason, str) else stop_key)
+            return records
+    status.finish(RunState.DONE)
     return records
+
+
+def _run_stage(
+    profile: Profile, ctx: StageContext, on_output: OutputHook | None
+) -> tuple[Payload, str | None]:
+    """运行一个阶段，返回（输出, StopLoop 的原因或 None）。"""
+    out = profile.stages[ctx.stage](ctx)
+    if not isinstance(out, dict):  # pyright: ignore[reportUnnecessaryIsInstance] -- 运行时防御第三方实现
+        msg = f"{profile.name}.{ctx.stage.value} 返回了 {type(out).__name__}，应为 dict"
+        raise StageOutputError(msg)
+    if on_output is None:
+        return out, None
+    try:
+        return on_output(ctx, out), None
+    except StopLoop as e:
+        return (e.payload if e.payload is not None else out), e.reason
 
 
 def _write_yaml(path: Path, obj: Payload) -> None:
