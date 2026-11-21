@@ -28,7 +28,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
-body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+input { -webkit-user-select: text; user-select: text; }
+body { -webkit-user-select: none; user-select: none; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
 
 #viewport { position: fixed; inset: 0; overflow: hidden; cursor: grab; touch-action: none;
   background-image: radial-gradient(var(--grid) 1px, transparent 1px); background-size: 24px 24px; }
