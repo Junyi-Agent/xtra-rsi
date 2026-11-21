@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 PLUGIN_GROUP = "xtra_rsi.viz"
 NODE_FILE = "node.yaml"
-MAX_DEPTH = 6
+MAX_DEPTH = 8
 MAX_LOOPS = 2000
 MAX_YAML_CHARS = 200_000
 _ITER_RE = re.compile(r"^iter-(\d+)$")

@@ -313,26 +313,39 @@ function layout() {
   pos = {};
   for (const el of world.querySelectorAll(".card, .node, .glabel")) el.remove();
   let y = 0, maxX = 0;
-  // 节点树：深度 → 列，DFS 顺序 → 行
+  // 节点树：深度 → 列，DFS 顺序 → 行；每个节点自己的 loop 竖着排在节点卡片下面
+  const placed = new Set();
   if (data.nodes.length) {
     const kids = new Map(); const roots = [];
     for (const n of data.nodes) { if (n.parent && data.nodes.some((m) => m.key === n.parent)) { if (!kids.has(n.parent)) kids.set(n.parent, []); kids.get(n.parent).push(n); } else roots.push(n); }
+    const own = new Map();
+    for (const l of data.loops) if (l.node) { if (!own.has(l.node)) own.set(l.node, []); own.get(l.node).push(l); }
+    for (const v of own.values()) v.sort((a, b) => String(a.started_at || a.title).localeCompare(String(b.started_at || b.title)));
+    const COLW = Math.max(NW, CW) + 160, LOOP_TOP = 44;
     y += 90; addLabel("节点树", `${data.nodes.length} 个节点`, 0, y);
-    let row = 0;
+    let cursor = y;
+    const blockH = (n) => { const k = (own.get(n.key) || []).length; return NH + (k ? LOOP_TOP + k * (CH + GAP) - GAP : 0); };
     const place = (n, depth) => {
       const ch = kids.get(n.key) || [];
-      let yy;
-      if (!ch.length) { yy = y + row * (NH + 40); row++; }
-      else { const ys = ch.map((c) => place(c, depth + 1)); yy = (ys[0] + ys[ys.length - 1]) / 2; }
-      pos[n.key] = { x: depth * (NW + 120), y: yy, w: NW, h: NH };
-      maxX = Math.max(maxX, depth * (NW + 120) + NW);
-      return yy;
+      const x = depth * COLW;
+      const top = ch.length ? Math.min(...ch.map((c) => place(c, depth + 1))) : cursor;
+      pos[n.key] = { x, y: top, w: NW, h: NH };
+      (own.get(n.key) || []).forEach((l, i) => {
+        const yy = top + NH + LOOP_TOP + i * (CH + GAP);
+        pos[l.id] = { x, y: yy, w: CW, h: CH, node: n.key };
+        placed.add(l.id);
+        const el = document.createElement("div"); el.className = "card"; el.dataset.id = l.id;
+        el.style.left = x + "px"; el.style.top = yy + "px"; world.appendChild(el);
+      });
+      cursor = Math.max(cursor, top + blockH(n) + 80);
+      maxX = Math.max(maxX, x + Math.max(NW, (own.get(n.key) || []).length ? CW : 0));
+      return top;
     };
     roots.forEach((r) => place(r, 0));
-    y += row * (NH + 40) + 80;
+    y = cursor;
     for (const n of data.nodes) world.appendChild(nodeEl(n));
   }
-  for (const [name, loops] of groupsOf(data.loops)) {
+  for (const [name, loops] of groupsOf(data.loops.filter((l) => !placed.has(l.id)))) {
     const cols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(loops.length * 1.4))));
     y += 90; addLabel(name, `${loops.length} 个 loop`, 0, y);
     loops.forEach((l, i) => {
@@ -360,6 +373,12 @@ function drawEdges() {
     const x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2, mx = (x1 + x2) / 2;
     s += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="var(--faint)" stroke-width="2.5"/>`;
     s += `<text x="${mx}" y="${(y1 + y2) / 2 - 8}" fill="var(--muted)" font-size="14" text-anchor="middle">${esc(STAGE_ZH[n.stage] || n.stage || "")}</text>`;
+  }
+  for (const [id, p] of Object.entries(pos)) {
+    if (!p.node) continue;
+    const a = pos[p.node]; if (!a) continue;
+    const x = a.x + 28;
+    s += `<path d="M${x},${a.y + a.h} L${x},${p.y}" fill="none" stroke="var(--faint)" stroke-width="2" stroke-dasharray="6 6"/>`;
   }
   svg.innerHTML = s;
 }
