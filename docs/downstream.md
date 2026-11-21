@@ -21,8 +21,8 @@ from xtra_rsi.command_stage import CommandStage
 from pathlib import Path
 
 def profile() -> Profile:
-    # myproj.agent：从 stdin 读 {"stage","iteration","instructions","upstream"}，
-    # 调用 LLM agent 执行该阶段，把阶段输出 JSON 对象打印到 stdout。
+    # myproj.agent：从 stdin 读 YAML（stage / iteration / instructions / upstream），
+    # 调用 LLM agent 执行该阶段，把阶段输出（YAML 映射）打印到 stdout。
     def agent(s: Stage) -> CommandStage:
         return CommandStage(
             ["python", "-m", "myproj.agent"],
@@ -37,7 +37,17 @@ def profile() -> Profile:
     )
 ```
 
-然后在每个 `harness/<stage>/evals/cases.json` 写自己的 ablation 用例。没有用例时 `rsi eval` 会失败：每个阶段都要有证据证明它有用。
+然后在每个 `harness/<stage>/evals/cases.yaml` 写自己的 ablation 用例：
+
+```yaml
+- name: pass-rate
+  profile: myproj
+  metric: pass_rate
+  iterations: 10
+  min_delta: 0.02
+```
+
+没有用例时 `rsi eval` 会失败：每个阶段都要有证据证明它有用。
 
 ## 项目特有规则
 
@@ -55,8 +65,14 @@ uv run rsi sync                      # 把新版基础层规则合进来
 
 ## 版本兼容
 
-公开接口：`Profile`、`Stage`、`StageContext`、`StageFn`、`run_loop`、`CommandStage` 的 stdin/stdout 协议、`rsi` 子命令、`cases.json` 格式、基础层 AGENTS.md 里约定的输出字段。0.x 期间 minor 版本可能有破坏性改动，会在这里写迁移说明。
+公开接口：`Profile`、`Stage`、`StageContext`、`StageFn`、`run_loop`、`CommandStage` 的 stdin/stdout 协议、`rsi` 子命令、`cases.yaml` 格式、基础层 AGENTS.md 里约定的输出字段。0.x 期间 minor 版本可能有破坏性改动，会在这里写迁移说明。
 
 ## 迁移说明
 
-（暂无）
+### 0.1 → 0.2：阶段数据改用 YAML（ADR 0006）
+
+- `harness/<stage>/evals/cases.json` 改名为 `cases.yaml`，内容转成 YAML 列表（字段不变）。
+- `CommandStage` 协议：stdin 从 JSON 改为 YAML；命令的 stdout 要输出 YAML 映射（可包在 ```yaml 代码块里）。用 JSON 输出的 agent 大多仍能解析（JSON 基本是 YAML 的子集），但建议改成 YAML。
+- `rsi run --run-dir` 写 `iter-N/<stage>.yaml`；`rsi run` / `rsi eval` 的 stdout 从 JSON Lines 改为以 `---` 分隔的 YAML 文档流。
+- 类型改名：`JSON` → `Value`，`JSONObject` → `Payload`（`from xtra_rsi import Payload, Value`）；`IterationRecord.to_json()` → `to_dict()`，`AblationResult.to_json()` → `to_dict()`。
+- 升级后跑 `uv run rsi sync`，基础层 AGENTS.md 的输出格式说明会更新为 YAML。

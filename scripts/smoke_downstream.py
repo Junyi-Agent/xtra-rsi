@@ -42,7 +42,7 @@ def main() -> int:
         case = '[{"name": "smoke", "profile": "toy", "metric": "final_score", '
         case += '"iterations": 15, "min_delta": 0.005}]\n'
         for cases in (proj / "harness").glob("*/evals"):
-            _ = (cases / "cases.json").write_text(case, encoding="utf-8")
+            _ = (cases / "cases.yaml").write_text(case, encoding="utf-8")
         _ = run("uv", "run", "rsi", "eval", cwd=proj)
         agents = (proj / "harness" / "observe" / "AGENTS.md").read_text(encoding="utf-8")
         if "# observe" not in agents or "xtra-rsi:generated" not in agents:

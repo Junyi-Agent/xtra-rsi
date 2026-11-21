@@ -1,9 +1,0 @@
-[
-  {
-    "name": "toy-final-score",
-    "profile": "toy",
-    "metric": "final_score",
-    "iterations": 15,
-    "min_delta": 0.005
-  }
-]

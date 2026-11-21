@@ -62,13 +62,13 @@ REVIEWERS: dict[str, str] = {
         "Focus: the RSI stages. For any change under harness/<stage>/ or to a stage "
         "implementation: is the stage AGENTS.md unambiguous and consistent with the code and "
         "with the input/output fields the neighbouring stages expect; is "
-        "harness/<stage>/evals/cases.json updated so the ablation still proves the stage is "
+        "harness/<stage>/evals/cases.yaml updated so the ablation still proves the stage is "
         "useful; are evals, metrics or thresholds weakened to make results look better. "
         "For other changes, check README.md, AGENTS.md and docs/ stay consistent with the code."
     ),
     "compat-workflow-safety": (
         "Focus: downstream compatibility, workflow and safety. Public API (Profile, Stage, "
-        "StageContext, StageFn, run_loop, CommandStage protocol, rsi subcommands, cases.json "
+        "StageContext, StageFn, run_loop, CommandStage protocol, rsi subcommands, cases.yaml "
         "format, base harness AGENTS.md) changes must be backward compatible or documented in "
         "docs/downstream.md. Check the change follows AGENTS.md (worktree flow, ADR status "
         "rules, no run artifacts committed), does not weaken or bypass hooks, pre-commit, CI "

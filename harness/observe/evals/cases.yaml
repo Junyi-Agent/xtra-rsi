@@ -1,0 +1,6 @@
+# 把本阶段换成直通后，完整 loop 的指标至少要好 min_delta（指标越大越好）
+- name: toy-final-score
+  profile: toy
+  metric: final_score
+  iterations: 15
+  min_delta: 0.005

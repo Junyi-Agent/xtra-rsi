@@ -14,13 +14,13 @@ def test_toy_converges() -> None:
 
 @pytest.mark.parametrize("stage", STAGE_ORDER, ids=[s.value for s in STAGE_ORDER])
 def test_every_stage_case_passes(stage: Stage) -> None:
-    """harness/<stage>/evals/cases.json 里的用例都应证明该阶段有效。"""
+    """harness/<stage>/evals/cases.yaml 里的用例都应证明该阶段有效。"""
     sd = next(d for d in stage_dirs(base_root()) if d.stage == stage)
     cases = load_cases(sd.cases)
     assert cases
     for case in cases:
         result = run_ablation(stage, case)
-        assert result.passed, result.to_json()
+        assert result.passed, result.to_dict()
 
 
 def test_ablate_renames_and_replaces() -> None:

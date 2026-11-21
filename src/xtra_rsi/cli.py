@@ -1,9 +1,11 @@
-"""``rsi`` 命令行。结果写 stdout（JSON Lines 或纯文本），错误写 stderr，失败时非零退出。"""
+"""``rsi`` 命令行。
+
+结果写 stdout（以 ``---`` 分隔的 YAML 文档流或纯文本行），错误写 stderr，失败时非零退出。
+"""
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,11 +14,12 @@ from xtra_rsi.ablation import load_cases, run_ablation
 from xtra_rsi.core import STAGE_ORDER, ProfileError, Stage, run_loop
 from xtra_rsi.harness import SyncError, base_root, check_layout, stage_dirs, sync
 from xtra_rsi.registry import available_profiles, load_profile
+from xtra_rsi.yamlio import dump
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from xtra_rsi.core import JSONObject
+    from xtra_rsi.payload import Payload
 
 
 class Args(argparse.Namespace):
@@ -31,8 +34,8 @@ class Args(argparse.Namespace):
     stage: str | None = None
 
 
-def _emit(obj: JSONObject) -> None:
-    _ = sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+def _emit(obj: Payload) -> None:
+    _ = sys.stdout.write(dump(obj, explicit_start=True))
 
 
 def _err(msg: str) -> None:
@@ -81,18 +84,18 @@ def cmd_sync(args: Args) -> int:
 
 
 def cmd_run(args: Args) -> int:
-    """运行 loop，每轮输出一行 JSON。"""
+    """运行 loop，每轮输出一个 YAML 文档。"""
     if args.profile is None:
         _err("缺少 --profile")
         return 2
     profile = load_profile(args.profile)
     for record in run_loop(profile, iterations=args.iterations, run_dir=args.run_dir):
-        _emit(record.to_json())
+        _emit(record.to_dict())
     return 0
 
 
 def cmd_eval(args: Args) -> int:
-    """对阶段跑 ablation 用例，每条用例输出一行 JSON；有用例不达标时退出码 1。"""
+    """对阶段跑 ablation 用例，每条用例输出一个 YAML 文档；有用例不达标时退出码 1。"""
     root = args.harness or _default_harness()
     stages = [Stage(args.stage)] if args.stage else list(STAGE_ORDER)
     failed = False
@@ -105,7 +108,7 @@ def cmd_eval(args: Args) -> int:
             if args.profile and case.profile != args.profile:
                 continue
             result = run_ablation(sd.stage, case)
-            _emit(result.to_json())
+            _emit(result.to_dict())
             failed = failed or not result.passed
     return 1 if failed else 0
 

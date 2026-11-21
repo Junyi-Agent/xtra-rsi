@@ -14,7 +14,7 @@ observe → reasoning → decision → action → feedback ─┐
 |---|---|
 | `AGENTS.md` | 这个阶段要做的步骤、输入输出契约、禁止事项。执行该阶段的 agent 读它 |
 | `scripts/` | 这个阶段专用的工具（可执行脚本，stdin/文件进、stdout 出、错误走 stderr） |
-| `evals/` | 这个阶段的 ablation 实验。`cases.json` 由 `rsi eval <stage>` 读取 |
+| `evals/` | 这个阶段的 ablation 实验。`cases.yaml` 由 `rsi eval <stage>` 读取 |
 | `data/` | 这个阶段要用的数据（小文件提交，大文件只放获取脚本或说明） |
 
 本目录是框架的「基础层」，随 Python 包一起发布。下游项目不要复制它，用 `rsi sync`
