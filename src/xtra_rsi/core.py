@@ -103,6 +103,27 @@ class Profile:
         stages[stage] = fn
         return replace(self, name=self.name + suffix, stages=stages)
 
+    def with_seed(self, seed: Payload) -> Profile:
+        """返回换了 seed 的新 profile。"""
+        return replace(self, seed=seed)
+
+
+class StopLoop(Exception):  # noqa: N818 -- 是控制流信号，不是错误
+    """由 ``on_output`` 抛出，让 loop 在当前阶段之后停止（例如预算用完）。
+
+    ``payload`` 不为 None 时用它作为该阶段的输出（hook 已经改写过的版本）。
+    """
+
+    def __init__(self, reason: str, payload: Payload | None = None) -> None:
+        """记录停止原因和改写后的输出。"""
+        super().__init__(reason)
+        self.reason: str = reason
+        self.payload: Payload | None = payload
+
+
+type OutputHook = Callable[[StageContext, Payload], Payload]
+"""阶段输出写盘、传给下一阶段之前调用；可以改写输出，或抛 :class:`StopLoop` 停止 loop。"""
+
 
 class StageOutputError(TypeError):
     """阶段返回的不是映射。"""
@@ -114,11 +135,15 @@ def run_loop(
     iterations: int,
     run_dir: Path | None = None,
     stop_key: str = "stop",
+    on_output: OutputHook | None = None,
 ) -> list[IterationRecord]:
     """运行 loop。
 
     ``run_dir`` 不为 None 时把每个阶段的输出写到
     ``run_dir/iter-<n>/<stage>.yaml``。feedback 输出里 ``stop_key`` 为真时提前结束。
+
+    ``on_output`` 不为 None 时，每个阶段的输出先经过它再写盘和传给下一阶段。它抛出
+    :class:`StopLoop` 时 loop 停止，返回已完成的迭代；未完成那一轮的输出已写盘但不在返回值里。
     """
     if iterations < 0:
         msg = f"iterations 必须 >= 0，收到 {iterations}"
@@ -133,10 +158,19 @@ def run_loop(
             if not isinstance(out, dict):  # pyright: ignore[reportUnnecessaryIsInstance] -- 运行时防御第三方实现
                 msg = f"{profile.name}.{stage.value} 返回了 {type(out).__name__}，应为 dict"
                 raise StageOutputError(msg)
+            stop = False
+            if on_output is not None:
+                try:
+                    out = on_output(ctx, out)
+                except StopLoop as e:
+                    stop = True
+                    out = e.payload if e.payload is not None else out
             outputs[stage] = out
             if run_dir is not None:
                 _write_yaml(run_dir / f"iter-{i:04d}" / f"{stage.value}.yaml", out)
             upstream = out
+            if stop:
+                return records
         record = IterationRecord(iteration=i, outputs=outputs)
         records.append(record)
         if record.last.get(stop_key) is True:

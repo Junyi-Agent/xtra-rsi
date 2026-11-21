@@ -256,6 +256,30 @@ HOOK_BYPASS_ALLOWED = [
 MERGE_API_DENIED = [("gh api -X PUT repos/o/r/pulls/3/merge", "main")]
 MERGE_API_ALLOWED = [("gh api repos/o/r/pulls/3", "main")]
 
+# ADR 0007: only a human approves or rejects a sub-RSI
+RSI_APPROVAL_DENIED = [
+    ("rsi approve n0001", "feat"),
+    ("rsi reject n0001 --reason x", "feat"),
+    ("uv run rsi approve n0001", "feat"),
+    ("uv run --frozen rsi approve n0001", "feat"),
+    ("uv run --with foo rsi approve n0001", "feat"),
+    ("uv run -p 3.12 rsi reject n0001", "feat"),
+    ("uv run rsi --nodes-dir x approve n0001", "feat"),
+    (".venv/bin/rsi approve n0001", "feat"),
+    ("python -m xtra_rsi.cli approve n0001", "feat"),
+    ("python3 -m xtra_rsi.cli reject n0001", "feat"),
+    ("cd {feat} && uv run rsi approve n0001", "main"),
+    ("bash -c 'uv run rsi approve n0001'", "feat"),
+    ("env FOO=1 uv run rsi approve n0001", "feat"),
+]
+RSI_APPROVAL_ALLOWED = [
+    ("uv run rsi node list", "feat"),
+    ("uv run rsi node show n0001", "feat"),
+    ("uv run rsi run --profile toy --node root", "feat"),
+    ("uv run pytest -k approve", "feat"),
+    ("echo rsi approve", "feat"),
+]
+
 DENIED = [
     *BRANCH_SWITCHING_DENIED,
     *COMMIT_DIR_DENIED,
@@ -268,6 +292,7 @@ DENIED = [
     *REDIRECTIONS_DENIED,
     *HOOK_BYPASS_DENIED,
     *MERGE_API_DENIED,
+    *RSI_APPROVAL_DENIED,
 ]
 ALLOWED = [
     *BRANCH_SWITCHING_ALLOWED,
@@ -281,6 +306,7 @@ ALLOWED = [
     *NON_GIT_ALLOWED,
     *HOOK_BYPASS_ALLOWED,
     *MERGE_API_ALLOWED,
+    *RSI_APPROVAL_ALLOWED,
 ]
 
 

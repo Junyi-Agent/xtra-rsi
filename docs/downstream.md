@@ -20,6 +20,7 @@ from xtra_rsi import Profile, Stage
 from xtra_rsi.command_stage import CommandStage
 from pathlib import Path
 
+
 def profile() -> Profile:
     # myproj.agent：从 stdin 读 YAML（stage / iteration / instructions / upstream），
     # 调用 LLM agent 执行该阶段，把阶段输出（YAML 映射）打印到 stdout。
@@ -63,11 +64,33 @@ uv run rsi sync                      # 把新版基础层规则合进来
 
 在 pre-commit 或 CI 里加 `uv run rsi sync --check`：框架升级后忘了 sync 时退出码 1。框架的代码（loop、ablation、CLI）随依赖升级直接生效，不需要额外步骤。
 
+## 嵌套 RSI（0.3 起，ADR 0007）
+
+```bash
+uv run rsi node init --target fraud --metric pr_auc --budget 20   # 人创建根节点，预算 $20
+uv run rsi run --profile fraud --node root --iterations 10        # 以根节点身份运行，按 _usage 记账
+uv run rsi node list                                              # 看所有节点和预算
+uv run rsi approve n0001                                          # 人确认开子节点（在终端里自己运行）
+uv run rsi reject n0001 --reason "证据不足"
+uv run rsi node close n0001 --status retired --reason "3 轮无收益"
+```
+
+- 你的 `CommandStage` 适配器要在阶段输出里带 `_usage`，否则花费不会被记账。默认单价表在 `xtra_rsi.pricing`，用 `--prices prices.yaml` 覆盖或补全（单位：美元/百万 token）。单价表里没有的模型或缓存类型会让 loop 停下，不会猜。
+- `rsi/nodes/` 建议提交（节点表和花费流水是审计记录），其中的 `runs/` 已被 `.gitignore` 忽略。
+
 ## 版本兼容
 
 公开接口：`Profile`、`Stage`、`StageContext`、`StageFn`、`run_loop`、`CommandStage` 的 stdin/stdout 协议、`rsi` 子命令、`cases.yaml` 格式、基础层 AGENTS.md 里约定的输出字段。0.x 期间 minor 版本可能有破坏性改动，会在这里写迁移说明。
 
 ## 迁移说明
+
+### 0.2 → 0.3：嵌套 RSI（ADR 0007）
+
+不破坏现有用法，只新增功能：
+
+- 新命令 `rsi node init|list|show|close`、`rsi approve`、`rsi reject`，`rsi run --node`。
+- 新的保留键：阶段输出的 `_usage`、decision 的可选 `spawn_request`、observe 输入里的 `_node`。如果你的阶段恰好用了这些键名，需要改名。
+- `run_loop` 新增可选参数 `on_output`；新增 `StopLoop`、`Profile.with_seed`。
 
 ### 0.1 → 0.2：阶段数据改用 YAML（ADR 0006）
 
