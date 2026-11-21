@@ -17,13 +17,15 @@ uv sync
 uv run pre-commit install
 uv run rsi run --profile toy --iterations 10   # 跑示例 loop，每轮输出一个 YAML 文档
 uv run rsi eval                                # 对五个阶段跑 ablation
+uv run rsi run --profile toy --iterations 10 --run-dir runs/demo
+uv run rsi viz runs                            # 在浏览器里看 loop 的目标、当前阶段、每轮结果
 ```
 
 ## 目录
 
 | 路径 | 内容 |
 |---|---|
-| `src/xtra_rsi/` | 框架代码：loop、profile 注册、ablation、外部命令阶段、harness 同步、CLI |
+| `src/xtra_rsi/` | 框架代码：loop、profile 注册、ablation、外部命令阶段、harness 同步、CLI、运行状态、可视化面板（`viz/`） |
 | `harness/<stage>/` | 五个阶段的基础层（随包发布给下游） |
 | `scripts/` | 仓库级工具 |
 | `docs/` | 架构说明、下游接入、ADR |

@@ -72,3 +72,8 @@ root（目标：任务本身，例如 fraud 模型）
 - **深度**：不设上限，靠预算只分不增、回放数据变少、无收益撤销自然停止。
 
 尚未实现（ADR 0007「实现顺序」第 2、3 步）：回放评估、子节点提案的应用与把关、根节点定期回归、自动撤销。
+
+## 运行状态与可视化（ADR 0008）
+
+- `run_loop(run_dir=...)` 维护 `run_dir/status.yaml`：`goal`（`Profile.goal`）、`state`、当前 `iteration` / `stage`、`pid` / `host` / 心跳。阶段可能跑很久，心跳由守护线程刷新；读的一方据此区分「正在跑」和「进程没了」。
+- `rsi viz`（`xtra_rsi.viz`）是只读的本地面板：扫描 loop 目录和节点表，在可缩放的画布上显示；下游通过 entry point `xtra_rsi.viz` 补充业务指标和阶段内部过程。

@@ -44,6 +44,9 @@ class Args(argparse.Namespace):
     reason: str = ""
     status: str = ""
     prices: Path | None = None
+    paths: list[Path] | None = None
+    host: str = "127.0.0.1"
+    port: int = 8765
 
 
 def _emit(obj: Payload) -> None:
@@ -190,6 +193,31 @@ def cmd_eval(args: Args) -> int:
     return 1 if failed else 0
 
 
+def cmd_viz(args: Args) -> int:
+    """启动只读的可视化面板。"""
+    from xtra_rsi.viz import main as viz_main  # noqa: PLC0415 -- 只有 viz 需要 http.server
+
+    return viz_main(args.paths or [Path()], host=args.host, port=args.port)
+
+
+def _add_eval(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:  # pyright: ignore[reportPrivateUsage] -- argparse 没有公开这个类型
+    e = sub.add_parser("eval", help="对阶段跑 ablation 用例")
+    _ = e.add_argument("stage", nargs="?", choices=[s.value for s in STAGE_ORDER])
+    _ = e.add_argument("--harness", type=Path)
+    _ = e.add_argument("--profile", help="只跑这个 profile 的用例")
+    e.set_defaults(func=cmd_eval)
+
+
+def _add_viz(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:  # pyright: ignore[reportPrivateUsage] -- argparse 没有公开这个类型
+    v = sub.add_parser("viz", help="在浏览器里看 loop 的目标、当前阶段、每轮结果（只读）")
+    _ = v.add_argument(
+        "paths", nargs="*", type=Path, help="扫描这些目录里的 run 和节点表，默认当前目录"
+    )
+    _ = v.add_argument("--host", default="127.0.0.1")
+    _ = v.add_argument("--port", type=int, default=8765, help="0 表示随机端口")
+    v.set_defaults(func=cmd_viz)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """构造参数解析器。"""
     p = argparse.ArgumentParser(prog="rsi", description=__doc__)
@@ -245,11 +273,8 @@ def build_parser() -> argparse.ArgumentParser:
     for sp in (ap, rj):
         _ = sp.add_argument("--nodes-dir", type=Path, default=Path("rsi/nodes"))
 
-    e = sub.add_parser("eval", help="对阶段跑 ablation 用例")
-    _ = e.add_argument("stage", nargs="?", choices=[s.value for s in STAGE_ORDER])
-    _ = e.add_argument("--harness", type=Path)
-    _ = e.add_argument("--profile", help="只跑这个 profile 的用例")
-    e.set_defaults(func=cmd_eval)
+    _add_eval(sub)
+    _add_viz(sub)
     return p
 
 

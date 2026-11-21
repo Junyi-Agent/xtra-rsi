@@ -78,11 +78,43 @@ uv run rsi node close n0001 --status retired --reason "3 轮无收益"
 - 你的 `CommandStage` 适配器要在阶段输出里带 `_usage`，否则花费不会被记账。默认单价表在 `xtra_rsi.pricing`，用 `--prices prices.yaml` 覆盖或补全（单位：美元/百万 token）。单价表里没有的模型或缓存类型会让 loop 停下，不会猜。
 - `rsi/nodes/` 建议提交（节点表和花费流水是审计记录），其中的 `runs/` 已被 `.gitignore` 忽略。
 
+## 运行状态与可视化（0.4 起，ADR 0008）
+
+- `run_loop(run_dir=...)` 会在 `run_dir/status.yaml` 写运行状态和心跳。给 `Profile` 设 `goal={"target": ..., "metric": ...}`，面板和人就能看到这个 loop 在改进什么。
+- `uv run rsi viz <目录>...` 启动只读面板（默认 http://127.0.0.1:8765/）。远程机器上在本地 `ssh -L 8765:localhost:8765 <host>` 后打开。
+- 想在面板上显示业务信息（指标、每个阶段的一行摘要、被测 agent 的工具调用），注册插件：
+
+```toml
+[project.entry-points."xtra_rsi.viz"]
+myproj = "myproj.viz:describe"
+```
+
+```python
+def describe(loop_dir: Path, *, detail: bool) -> Payload | None:
+    if not (loop_dir.parent / "run.yaml").is_file():
+        return None                       # 不是我的 loop
+    return {
+        "title": "...", "group": "...",
+        "kpis": [{"label": "attainment", "value": 0.8, "target": 0.95}],
+        "series": [{"label": "attainment", "values": [0.3, 0.8], "target": 0.95}],
+        "stage_notes": {"0": {"action": "agent 跑了 12 分钟，35k tokens"}},
+        "inner": {"0": [{"kind": "tool", "text": "Bash: nvcc ..."}]} if detail else {},
+    }
+```
+
 ## 版本兼容
 
-公开接口：`Profile`、`Stage`、`StageContext`、`StageFn`、`run_loop`、`CommandStage` 的 stdin/stdout 协议、`rsi` 子命令、`cases.yaml` 格式、基础层 AGENTS.md 里约定的输出字段。0.x 期间 minor 版本可能有破坏性改动，会在这里写迁移说明。
+公开接口：`Profile`、`Stage`、`StageContext`、`StageFn`、`run_loop`、`status.yaml` 格式、`xtra_rsi.viz` 插件格式、`CommandStage` 的 stdin/stdout 协议、`rsi` 子命令、`cases.yaml` 格式、基础层 AGENTS.md 里约定的输出字段。0.x 期间 minor 版本可能有破坏性改动，会在这里写迁移说明。
 
 ## 迁移说明
+
+### 0.3 → 0.4：运行状态与可视化（ADR 0008）
+
+不破坏现有用法，只新增功能：
+
+- `run_loop` 传了 `run_dir` 时多写一个 `run_dir/status.yaml`（并起一个心跳守护线程）。如果你的工具按「`run_dir` 下只有 `iter-*` 目录」假设遍历，需要跳过它。
+- `Profile` 新增可选字段 `goal` 和 `with_goal`。
+- 新命令 `rsi viz`，新 entry point group `xtra_rsi.viz`。
 
 ### 0.2 → 0.3：嵌套 RSI（ADR 0007）
 
