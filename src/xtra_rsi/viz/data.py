@@ -18,6 +18,9 @@
 - ``series``：``[{label, values: [number|null], target?}]``，按迭代的曲线
 - ``stage_notes``：``{"<iteration>": {"<stage>": "一行摘要"}}``；还没有输出文件的阶段（正在跑）
   也可以给，显示为进展
+- ``sections``：``[{key, title, note?, collapsed?}]``，详情里把阶段输出按顶层键拆成带标题的块，
+  按这个顺序显示（例如把「LLM 的原样输出」和「框架记录」「透传状态」分开）；没列出的键归到最后的
+  「其他」块，``collapsed: true`` 的块默认折叠。原始文件仍可在最后展开查看
 - ``inner``（``detail=True`` 时）：``{"<iteration>": [{kind, text, detail?}]}``，
   阶段内部的过程（例如被测 agent 的工具调用）；kind 取 text / thinking / tool / result / error
 """
@@ -36,7 +39,7 @@ from typing import TYPE_CHECKING, cast
 
 from xtra_rsi.core import STAGE_ORDER
 from xtra_rsi.status import HEARTBEAT_S, STATUS_FILE
-from xtra_rsi.yamlio import YAMLError, load_mapping
+from xtra_rsi.yamlio import YAMLError, dump, load_mapping
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -75,11 +78,17 @@ def loop_id(path: Path) -> str:
 
 
 def is_loop_dir(path: Path) -> bool:
-    """是不是 run_loop 的输出目录。"""
+    """是不是 run_loop 的输出目录：有 status.yaml，或有含 ``<stage>.yaml`` 的 ``iter-<n>`` 子目录。
+
+    只有 ``iter-<n>`` 目录名不算：下游常按轮次建别的目录（例如每轮的 LLM 日志），不能当成 loop。
+    """
     if (path / STATUS_FILE).is_file():
         return True
     try:
-        return any(_ITER_RE.match(p.name) and p.is_dir() for p in path.iterdir())
+        return any(
+            _ITER_RE.match(p.name) and any((p / f"{s}.yaml").is_file() for s in _STAGES)
+            for p in path.iterdir()
+        )
     except OSError:
         return False
 
@@ -325,15 +334,47 @@ def loop_detail(lid: str, path: Path, *, full: bool) -> Payload:
                 ),
             }
             if full:
-                text = f.read_text(encoding="utf-8", errors="replace")
-                entry["yaml"] = (
-                    text if len(text) <= MAX_YAML_CHARS else text[:MAX_YAML_CHARS] + "\n# …截断"
-                )
+                entry["yaml"] = _clip(f.read_text(encoding="utf-8", errors="replace"))
+                if obj is not None:
+                    entry["sections"] = cast("Value", split_sections(obj, plugin.get("sections")))
             stages[s] = entry
         iterations.append({"iteration": i, "stages": stages})
     out: Payload = {"id": lid, "iterations": iterations, "plugin_error": err}
     if full:
         out["inner"] = cast("Value", plugin.get("inner") or {})
+    return out
+
+
+def _clip(text: str) -> str:
+    return text if len(text) <= MAX_YAML_CHARS else text[:MAX_YAML_CHARS] + "\n# …截断"
+
+
+def split_sections(obj: Payload, spec: Value | None) -> list[Payload]:
+    """按插件给的 ``sections`` 把阶段输出拆成带标题的 YAML 块；没有 spec 时返回空。"""
+    if not isinstance(spec, list):
+        return []
+    out: list[Payload] = []
+    used: set[str] = set()
+    for sp in spec:
+        if not isinstance(sp, dict):
+            continue
+        key = sp.get("key")
+        if not isinstance(key, str) or key not in obj or key in used:
+            continue
+        used.add(key)
+        v = obj[key]
+        note = sp.get("note")
+        out.append(
+            {
+                "title": str(sp.get("title") or key),
+                "note": note if isinstance(note, str) else None,
+                "collapsed": sp.get("collapsed") is True,
+                "yaml": _clip(dump(v) if isinstance(v, dict) else dump({key: v})),
+            }
+        )
+    rest: Payload = {k: v for k, v in obj.items() if k not in used}
+    if out and rest:
+        out.append({"title": "其他", "note": None, "collapsed": False, "yaml": _clip(dump(rest))})
     return out
 
 

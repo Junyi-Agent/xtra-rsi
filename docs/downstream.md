@@ -99,6 +99,11 @@ def describe(loop_dir: Path, *, detail: bool) -> Payload | None:
         "series": [{"label": "attainment", "values": [0.3, 0.8], "target": 0.95}],
         "stage_notes": {"0": {"action": "agent 跑了 12 分钟，35k tokens"}},
         "inner": {"0": [{"kind": "tool", "text": "Bash: nvcc ..."}]} if detail else {},
+        # 详情里按顶层键分块显示阶段输出（0.4.2 起），没列出的键归到「其他」
+        "sections": [
+            {"key": "output", "title": "LLM 输出", "note": "原样"},
+            {"key": "state", "title": "透传状态", "collapsed": True},
+        ],
     }
 ```
 
