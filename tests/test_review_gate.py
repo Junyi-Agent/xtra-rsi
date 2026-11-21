@@ -152,6 +152,34 @@ def test_bad_output_rejects(bad: str) -> None:
     assert not review_gate.parse_output("x", bad).approve
 
 
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "expected"),
+    [
+        (
+            json.dumps({"is_error": True, "result": "You've hit your weekly limit"}),
+            "",
+            "You've hit your weekly limit",
+        ),
+        (json.dumps({"result": "Not logged in"}), "boom", "boom; Not logged in"),
+        ("", "boom", "boom"),
+        ("not json", "", "not json"),
+        ("[]", "", "[]"),
+        ("", "", "no output"),
+    ],
+)
+def test_failed_cli_reports_why(
+    monkeypatch: pytest.MonkeyPatch, stdout: str, stderr: str, expected: str
+) -> None:
+    def fake_run(*_args: object, **_kw: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["claude"], 1, stdout, stderr)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)  # the module review_gate calls
+    ctx: dict[str, str] = dict.fromkeys(("root", "base", "head", "log", "diff"), "")
+    v = review_gate.run_reviewer("x", "f", ctx, Path.cwd())
+    assert not v.approve
+    assert v.summary == f"claude exited 1: {expected}"
+
+
 def test_missing_cli_rejects(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(review_gate, "CLAUDE_CMD", ["/nonexistent/claude-binary"])
     ctx: dict[str, str] = dict.fromkeys(("root", "base", "head", "log", "diff"), "")
