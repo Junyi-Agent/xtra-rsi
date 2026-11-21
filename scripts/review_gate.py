@@ -181,9 +181,26 @@ def run_reviewer(name: str, focus: str, ctx: dict[str, str], root: Path) -> Verd
     except subprocess.TimeoutExpired:
         return Verdict(name, approve=False, summary=f"timed out after {TIMEOUT_S}s")
     if r.returncode != 0:
-        summary = f"claude exited {r.returncode}: {r.stderr.strip()[:300]}"
+        summary = f"claude exited {r.returncode}: {failure_detail(r)}"
         return Verdict(name, approve=False, summary=summary)
     return parse_output(name, r.stdout)
+
+
+def failure_detail(r: subprocess.CompletedProcess[str]) -> str:
+    """Explain why `claude -p` failed.
+
+    With `--output-format json` the error (e.g. a usage limit or "Not logged in") is in the
+    `result` field on stdout, and stderr is often empty.
+    """
+    detail = r.stderr.strip()
+    try:
+        data = cast("object", json.loads(r.stdout))
+    except ValueError:
+        data = None
+    result = cast("dict[str, object]", data).get("result") if isinstance(data, dict) else None
+    if isinstance(result, str) and result.strip():
+        detail = f"{detail}; {result.strip()}" if detail else result.strip()
+    return (detail or r.stdout.strip() or "no output")[:300]
 
 
 def decide(verdicts: list[Verdict]) -> bool:
