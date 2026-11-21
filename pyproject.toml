@@ -1,0 +1,68 @@
+[project]
+name = "xtra-rsi"
+version = "0.1.0"
+description = "Recursive Self-Improvement agent framework: observe → reasoning → decision → action → feedback loop"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+rsi = "xtra_rsi.cli:main"
+
+# 下游项目在自己的 pyproject 里注册同名 group 即可被 `rsi --profile <name>` 发现
+[project.entry-points."xtra_rsi.profiles"]
+toy = "xtra_rsi.profiles.toy:profile"
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.29",
+  "pre-commit>=4.0",
+  "pytest>=8.3",
+  "ruff>=0.11",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xtra_rsi"]
+
+# harness/ 作为基础 AGENTS.md 随包发布，下游 `rsi sync` 从这里读
+[tool.hatch.build.targets.wheel.force-include]
+"harness" = "xtra_rsi/_harness"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "COM812",                     # 与 ruff format 冲突
+  "D203", "D213",               # 与 D211 / D212 互斥
+  "D100", "D104",               # 模块级 docstring 不强制
+  "D400", "D415",               # docstring 用中文句号结尾
+  "CPY001",                     # 不要求版权头
+  "RUF001", "RUF002", "RUF003", # 中文注释/字符串里的全角标点是故意的
+  "TD002", "TD003", "FIX002",   # TODO 不强制作者和 issue 链接
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D", "PLR2004", "INP001"]
+"harness/**" = ["INP001"]
+"scripts/**" = ["INP001"]
+"evals/**" = ["INP001"]
+".claude/**" = ["INP001"]
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.12"
+include = ["src", "tests", "harness", "scripts", "evals"]
+exclude = ["vendor", ".venv", "**/__pycache__"]
+reportMissingTypeStubs = "error"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--strict-config", "-ra"]

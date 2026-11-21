@@ -1,0 +1,31 @@
+name: release
+
+# 推送 vX.Y.Z tag 时：跑和 CI 相同的检查，确认 tag 与 pyproject 版本一致，构建并发布 GitHub Release。
+# 下游通过 `xtra-rsi @ git+https://github.com/Junyi-Agent/xtra-rsi@vX.Y.Z` 锁定版本。
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run --frozen pre-commit run --all-files --show-diff-on-failure
+      - run: uv run --frozen python scripts/smoke_downstream.py
+      - name: tag 与 pyproject 版本一致
+        run: |
+          version="$(uv version --short)"
+          test "v${version}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != v${version}" >&2; exit 1; }
+      - run: uv build
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes

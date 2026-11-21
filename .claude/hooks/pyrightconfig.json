@@ -1,0 +1,5 @@
+{
+  "typeCheckingMode": "all",
+  "pythonVersion": "3.12",
+  "reportMissingTypeStubs": "error"
+}

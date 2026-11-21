@@ -1,0 +1,66 @@
+# ruff / basedpyright / pytest 都走 `uv run --frozen`，版本由 uv.lock 统一锁定，
+# 本地、pre-commit、CI 用的是同一个版本。
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-executables-have-shebangs
+      - id: check-added-large-files
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv lock --check
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+      - id: basedpyright
+        name: basedpyright (all)
+        entry: uv run --frozen basedpyright
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+      - id: basedpyright-hooks
+        name: basedpyright (all, .claude/hooks)
+        # basedpyright 总是排除 .* 目录，hook 目录用自己的配置单独检查
+        entry: uv run --frozen basedpyright -p .claude/hooks/pyrightconfig.json
+        language: system
+        files: ^\.claude/hooks/
+        pass_filenames: false
+      - id: harness-layout
+        name: rsi check (harness 目录结构)
+        entry: uv run --frozen rsi check harness
+        language: system
+        files: ^harness/
+        pass_filenames: false
+      - id: pytest
+        name: pytest（含五个阶段的 ablation）
+        entry: uv run --frozen pytest -q
+        language: system
+        files: ^(src|tests|harness|scripts|\.claude/hooks)/|^pyproject\.toml$
+        pass_filenames: false
+      - id: review-gate
+        name: review gate（3 个 Claude 审查，≥2 同意才放行）
+        entry: python3 scripts/review_gate.py
+        language: system
+        stages: [pre-push]
+        always_run: true
+        pass_filenames: false
