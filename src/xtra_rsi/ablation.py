@@ -38,7 +38,7 @@ class AblationCase:
 
     @classmethod
     def from_dict(cls, obj: Payload) -> AblationCase:
-        """从 映射解析，字段缺失或类型错误时抛 ValueError。"""
+        """从映射解析，字段缺失或类型错误时抛 ValueError。"""
         try:
             name, profile, metric = (_req(obj, k, str) for k in ("name", "profile", "metric"))
             iterations = _req(obj, "iterations", int)
@@ -92,7 +92,7 @@ class AblationResult:
         return self.delta >= self.case.min_delta
 
     def to_dict(self) -> Payload:
-        """转成 映射，供 CLI 输出。"""
+        """转成映射，供 CLI 输出。"""
         return {
             "stage": self.stage.value,
             "case": self.case.name,

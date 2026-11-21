@@ -46,7 +46,7 @@ class StageContext:
 
 
 class StageFn(Protocol):
-    """阶段实现：读 context，返回 映射。必须是纯函数式的输入输出，副作用自行负责。"""
+    """阶段实现：读 context，返回映射。必须是纯函数式的输入输出，副作用自行负责。"""
 
     def __call__(self, ctx: StageContext, /) -> Payload:
         """运行阶段。"""
@@ -69,7 +69,7 @@ class IterationRecord:
         return self.outputs[STAGE_ORDER[-1]]
 
     def to_dict(self) -> Payload:
-        """转成可序列化的 映射。"""
+        """转成可序列化的映射。"""
         return {
             "iteration": self.iteration,
             "outputs": {stage.value: dict(self.outputs[stage]) for stage in STAGE_ORDER},
@@ -105,7 +105,7 @@ class Profile:
 
 
 class StageOutputError(TypeError):
-    """阶段返回的不是 映射。"""
+    """阶段返回的不是映射。"""
 
 
 def run_loop(

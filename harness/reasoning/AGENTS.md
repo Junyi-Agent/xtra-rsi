@@ -32,13 +32,13 @@ lr: 0.06
 hypotheses:
   - change: 把 API 客户端超时从 5s 调到 15s
     rationale: 失败全部是超时，且集中在大响应
-    evidence: [observations[1]]
+    evidence: ["observations[1]"]
     confidence: medium
     expected_effect: test_api 失败数 3 → 0
     falsified_if: 调整后仍有超时，或失败转为其他错误
   - change: 给大响应加分页
     rationale: 根因可能是响应过大
-    evidence: [observations[1]]
+    evidence: ["observations[1]"]
     confidence: low
     expected_effect: 响应时间下降 50%
     falsified_if: 分页后响应时间不变
