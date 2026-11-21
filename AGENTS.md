@@ -4,7 +4,7 @@ Recursive Self-Improvement agent 框架。loop：observe → reasoning → decis
 
 ## 布局
 
-- `src/xtra_rsi/`：框架代码。`core.py`（Stage / Profile / run_loop）、`registry.py`（entry point `xtra_rsi.profiles`）、`ablation.py`、`command_stage.py`（外部命令 / LLM agent 当阶段）、`harness.py`（目录检查与 `rsi sync`）、`cli.py`（`rsi` 命令）、`profiles/toy.py`（示例 profile）。
+- `src/xtra_rsi/`：框架代码。`core.py`（Stage / Profile / run_loop）、`registry.py`（entry point `xtra_rsi.profiles`）、`ablation.py`、`command_stage.py`（外部命令 / LLM agent 当阶段）、`harness.py`（目录检查与 `rsi sync`）、`cli.py`（`rsi` 命令）、`profiles/toy.py`（示例 profile）、`nodes.py`（嵌套 RSI 的节点表、预算、审批）、`node_loop.py`（以节点身份运行 loop：记账、开子节点申请）、`pricing.py`（token → 美元单价表）。
 - `harness/<stage>/`：每个阶段的 `AGENTS.md`、`scripts/`、`evals/`、`data/`。这是随包发布给下游的基础层。**改某阶段的工作方式，先读那个阶段的 AGENTS.md。**
 - 根目录 `scripts/`、`docs/`、`evals/`、`data/`：仓库级（跨阶段）的工具、文档、评估、数据。
 - `vendor/skills/`：git submodule，`.claude/skills/jy-*` 是指向它的软链接。

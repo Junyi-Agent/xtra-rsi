@@ -6,7 +6,7 @@
 
 ## 输入
 
-- `upstream`：上一轮 feedback 的输出（第 0 轮是 profile 的 `seed`）。
+- `upstream`：上一轮 feedback 的输出（第 0 轮是 profile 的 `seed`）。以节点身份运行时其中有 `_node`：本节点的约定（`contract`：目标、指标、预算、限制）、剩余预算和子节点的摘要。
 - 环境：任务环境、被改进的 agent 自身（它的 harness、代码、历史运行记录 `runs/`）。
 
 ## 步骤

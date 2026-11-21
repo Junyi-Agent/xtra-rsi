@@ -7,6 +7,10 @@
 - stdout：阶段输出，一个顶层为映射的 YAML 文档。整个输出被单个 ```` ```yaml ````
   代码块包住时会自动去掉围栏（LLM 常这样输出）。
 - 非零退出视为失败。
+- 以节点身份运行时（``rsi run --node``），stdout 里可以带保留键 ``_usage`` 报告本阶段的 LLM
+  用量，框架据此记账后删掉它，见 :mod:`xtra_rsi.node_loop`。例如把 ``claude -p
+  --output-format json`` 的 ``usage`` 和模型名转成
+  ``_usage: {model: claude-opus-5-5, input_tokens: ..., output_tokens: ...}``。
 """
 
 from __future__ import annotations

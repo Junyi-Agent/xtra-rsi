@@ -49,6 +49,11 @@ Do not skip the git hooks (--no-verify, SKIP=, core.hooksPath): pre-commit and t
 pre-push review gate must run. Fix what they report instead (see CLAUDE.md).\
 """
 MERGE_API_MSG = "Merge PRs with `gh pr merge` so the CI check gate applies (see CLAUDE.md)."
+APPROVE_MSG = """\
+Approving or rejecting a sub-RSI is a human decision (ADR 0007). Ask the user to run it \
+themselves, e.g. `! uv run rsi approve <node>` or `! uv run rsi reject <node>`.\
+"""
+RSI_HUMAN_ONLY = frozenset({"approve", "reject"})
 PARSE_MSG = """\
 git_guard could not parse this command (unbalanced quotes), and it mentions git/gh, so \
 it is denied. Split it into simpler commands, or write long text to a file first.\
@@ -527,6 +532,37 @@ def change_dir(seg: list[str], cwd: str, dirs: list[str]) -> str | None:
     return None
 
 
+def rsi_args(seg: list[str]) -> list[str] | None:
+    """Arguments after the `rsi` entry point in `seg`, or None when it does not run rsi.
+
+    Covers `rsi ...`, `.venv/bin/rsi ...`, `uv run [opts] rsi ...` and
+    `python -m xtra_rsi.cli ...`.
+    """
+    words = seg
+    if words and words[0] == "uv" and "run" in words:
+        # uv run options may take values (--with pkg): jump to the first `rsi` after run
+        words = words[words.index("run") + 1 :]
+        names = [w.rsplit("/", 1)[-1] for w in words]
+        if "rsi" in names:
+            words = words[names.index("rsi") :]
+    if not words:
+        return None
+    if words[0].rsplit("/", 1)[-1] == "rsi":
+        return words[1:]
+    if words[0].rsplit("/", 1)[-1].startswith("python") and words[1:3] == ["-m", "xtra_rsi.cli"]:
+        return words[3:]
+    return None
+
+
+def check_rsi(seg: list[str]) -> str | None:
+    """Deny `rsi approve` / `rsi reject`: only a human decides on a sub-RSI."""
+    args = rsi_args(seg)
+    if args is None:
+        return None
+    # any position: options may take values before the subcommand (`rsi --x y approve`)
+    return APPROVE_MSG if RSI_HUMAN_ONLY.intersection(args) else None
+
+
 def check_simple(seg: list[str], cwd: str, flags: set[str]) -> str | None:
     """Return the reason to deny one unwrapped simple command run in `cwd`, or None."""
     script = shell_script(seg)
@@ -540,7 +576,7 @@ def check_simple(seg: list[str], cwd: str, flags: set[str]) -> str | None:
         return None
     if seg[0] == "git":
         return check_git(seg, cwd, flags)
-    return None
+    return check_rsi(seg)
 
 
 def check(

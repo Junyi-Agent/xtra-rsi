@@ -9,6 +9,7 @@ from xtra_rsi.core import (
     Stage,
     StageContext,
     StageFn,
+    StopLoop,
     run_loop,
 )
 from xtra_rsi.payload import Payload, Value
@@ -23,6 +24,7 @@ __all__ = [
     "Stage",
     "StageContext",
     "StageFn",
+    "StopLoop",
     "Value",
     "run_loop",
 ]

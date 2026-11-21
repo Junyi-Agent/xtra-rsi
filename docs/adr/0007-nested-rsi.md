@@ -1,6 +1,6 @@
 # 0007 嵌套 RSI：每个节点自己决定要不要给某个阶段开 sub-RSI
 
-状态：提议
+状态：采纳（2026-11-21 用户授权先实现第 1 步，之后再审阅决策）
 
 ## 背景
 
@@ -83,7 +83,7 @@ rsi/nodes/<id>/summary.yaml   # 交给父节点的摘要
 rsi/nodes/<id>/runs/          # 本节点的运行记录
 ```
 
-`status` 取值：`pending_approval`、`running`、`proposed`、`retired`、`done`。节点只按上面「局部视野」读文件，由框架提供的读写接口保证。
+`status` 取值：`pending_approval`、`running`、`proposed`、`rejected`（人拒绝了申请）、`retired`、`done`。节点只按上面「局部视野」读文件，由框架提供的读写接口保证。
 
 ### 框架与下游的分工
 
@@ -113,5 +113,18 @@ rsi/nodes/<id>/runs/          # 本节点的运行记录
 - 撤销阈值 K、根节点回归间隔 M 的默认值。
 - 单价表的来源和更新方式。
 - 预算划分比例由父节点的 decision 决定，还是框架给默认比例。
+
+## 实现记录（第 1 步）
+
+- `xtra_rsi.nodes`：节点表、约定、摘要、花费流水；`NodeView` 只暴露自己、约定和子节点摘要。批准时从父节点剩余预算划出（`allocated_usd`），结束时花费并入父节点 `spent_usd`、余额退回；有未结束的子节点时不能结束父节点。批准时用 `rsi sync` 生成子节点自己的 harness，子节点因此也能再申请子节点（代码里没有深度假设）。
+- `xtra_rsi.node_loop.run_node`：通过 `run_loop` 新增的 `on_output` 钩子实现。阶段输出的 `_usage` 记账后删除；decision 的 `spawn_request` 生成待确认子节点，结果（或错误原因）写入 `spawn_request_result`，不中断 loop；feedback 输出注入最新的 `_node` 视野。超支时先记账再停止（`StopLoop`），无法换算金额时也停止。
+- `xtra_rsi.pricing`：默认单价表只收录官方公布的价格（2026-11），未公布的缓存价格留空；用量里出现没有单价的 token 时报错而不是猜。
+- `rsi approve` / `rsi reject` 由 `git_guard.py` 拒绝 agent 通过 Bash 运行；人用 `!` 在会话里运行或在自己的终端运行。
+
+尚未做到：
+
+- 人工审批只拦住了命令行；agent 仍可以用文件编辑工具直接改 `node.yaml`。需要再加一层保护（例如 PreToolUse 拦截对 `rsi/nodes/**/node.yaml` 的写入）。
+- 「不能改评估」的强制检查、回放评估、提案的应用与把关、根节点定期回归、自动撤销，属于第 2、3 步。
+- 节点表只支持单进程写入。
 
 ## 验证
