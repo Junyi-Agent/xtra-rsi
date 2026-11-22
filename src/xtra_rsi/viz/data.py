@@ -15,14 +15,25 @@
 - ``title`` / ``subtitle`` / ``group``：卡片标题、副标题、分组
 - ``goal``：并入 status.yaml 的 goal（约定键 ``target`` / ``metric``）
 - ``kpis``：``[{label, value, target?, unit?}]``；value 是数字且有 target 时画进度条
-- ``series``：``[{label, values: [number|null], target?}]``，按迭代的曲线
+- ``series``：``[{label, values: [number|null], target?, x?, x_label?, y_label?}]``，按迭代的曲线。
+  ``x`` 是和 values 等长的迭代号（从 0 开始，显示为第 x+1 轮），不给时第 i 个值算第 i 轮；
+  详情里的大图 x 轴是轮次（``x_label`` 默认「轮次」），y 轴标题是 ``y_label``（默认 label）
 - ``stage_notes``：``{"<iteration>": {"<stage>": "一行摘要"}}``；还没有输出文件的阶段（正在跑）
   也可以给，显示为进展
 - ``sections``：``[{key, title, note?, collapsed?}]``，详情里把阶段输出按顶层键拆成带标题的块，
   按这个顺序显示（例如把「LLM 的原样输出」和「框架记录」「透传状态」分开）；没列出的键归到最后的
   「其他」块，``collapsed: true`` 的块默认折叠。原始文件仍可在最后展开查看
-- ``inner``（``detail=True`` 时）：``{"<iteration>": [{kind, text, detail?}]}``，
-  阶段内部的过程（例如被测 agent 的工具调用）；kind 取 text / thinking / tool / result / error
+- ``inner``（``detail=True`` 时）：``{"<iteration>": [事件 | 会话]}``，阶段内部的过程。
+
+  - 事件 ``{kind, text, detail?}``：kind 取 text / thinking / tool / result / error
+  - 会话 ``{kind: "session", title, events: [事件], stage?, fresh?, resumes?, session?, inputs?,
+    output?, status?, meta?}``：一次 LLM / agent 调用。``stage`` 让它也显示在那个阶段的详情里；
+    ``fresh: true`` 表示新进程、不带对话历史（false 表示续接，``resumes`` 写续接了谁）；
+    ``inputs: [{title, text, note?, collapsed?}]`` 是会话开始时拿到的全部内容（例如上一阶段的
+    交接、任务上下文、阶段说明），``output`` 是它交给下一步的内容；
+    ``status`` 取 running / done / error
+
+  只给事件的旧格式照旧显示成一条时间线。
 """
 
 from __future__ import annotations

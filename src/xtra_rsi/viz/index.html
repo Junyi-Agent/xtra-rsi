@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>RSI 面板</title>
 <style>
 :root {
@@ -171,10 +171,45 @@ pre.y { margin: 0; background: var(--panel-2); border: 1px solid var(--line); bo
 .ev details pre { font: 11.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; background: var(--panel-2); padding: 6px 8px; border-radius: 6px; }
 .muted { color: var(--muted); }
 
+/* 抽屉里的图表 */
+.chart { margin: 6px 0 12px; }
+.chart .ct { font-size: 12.5px; color: var(--muted); margin-bottom: 2px; }
+.chart svg { display: block; max-width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: inherit; }
+
+/* 内部过程：按会话分块 */
+.sess { border: 1px solid var(--line); border-radius: 10px; margin: 0 0 10px; background: var(--panel); }
+.sess > summary { list-style: none; cursor: pointer; padding: 8px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sess > summary::-webkit-details-marker { display: none; }
+.sess > summary::before { content: "▸"; color: var(--muted); transition: transform .12s; }
+.sess[open] > summary::before { transform: rotate(90deg); }
+.sess .sn { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.sess .st { font-weight: 650; }
+.sess .meta { color: var(--muted); font-size: 12px; margin-left: auto; }
+.badge { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.badge.fresh { color: var(--done); background: color-mix(in srgb, var(--done) 14%, transparent); }
+.badge.cont { color: var(--stopped); background: color-mix(in srgb, var(--stopped) 16%, transparent); }
+.badge.run { color: var(--running); background: color-mix(in srgb, var(--running) 14%, transparent); }
+.badge.err { color: var(--failed); background: color-mix(in srgb, var(--failed) 14%, transparent); }
+.sess .sbody { padding: 0 12px 10px; border-top: 1px solid var(--line); }
+.sess .lane { font-size: 11.5px; font-weight: 700; color: var(--muted); letter-spacing: .4px; margin: 10px 0 4px; }
+.sess .inp { border-left: 3px solid var(--accent); background: var(--panel-2); border-radius: 0 8px 8px 0; margin: 4px 0; }
+.sess .inp > summary { cursor: pointer; padding: 5px 10px; font-size: 12.5px; }
+.sess .inp pre { margin: 0; padding: 4px 10px 8px; font: 11.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow: auto; }
+.flow { color: var(--muted); font-size: 12px; text-align: center; margin: -4px 0 6px; }
+
 @media (max-width: 640px) {
-  #search { width: 130px; }
-  #hint { display: none; }
-  .tools { margin-left: 0; }
+  /* 手机：顶栏压成两行，不挡画布 */
+  #bar { top: 8px; left: 8px; right: 8px; gap: 6px; }
+  .brand { padding: 4px 9px; font-size: 13px; }
+  .brand small, #conn, #hint { display: none; }
+  .pills { padding: 2px; }
+  .pill { font-size: 12px; padding: 2px 7px; }
+  #search { flex: 1; min-width: 0; width: auto; padding: 5px 9px; font-size: 13px; }
+  .tools { margin-left: 0; padding: 2px; }
+  .tools button { padding: 2px 7px; font-size: 12px; }
+  #drawer header { padding: 12px 14px 8px; }
+  #dbody { padding: 12px 12px 30px; }
 }
 </style>
 </head>
@@ -190,7 +225,7 @@ pre.y { margin: 0; background: var(--panel-2); border: 1px solid var(--line); bo
     <button id="zout" title="缩小">−</button><span id="zoom">100%</span><button id="zin" title="放大">+</button>
   </div>
 </div>
-<div id="hint">滚轮缩放 · 拖动平移 · 双击卡片聚焦 · 放大到一定程度显示每轮每个阶段 · 点击看详情</div>
+<div id="hint">滚轮 / 双指缩放 · 拖动平移 · 双击卡片聚焦 · 放大到一定程度显示每轮每个阶段 · 点击看详情</div>
 <div id="empty"><div>没有找到 loop。<br>用 <code>rsi viz &lt;目录&gt;</code> 指向含 <code>status.yaml</code> 或 <code>iter-*/</code> 的 run 目录。</div></div>
 <aside id="drawer"><header><div class="ttl"><b id="dtitle"></b><small id="dpath"></small></div><button class="x" id="dclose" title="关闭（Esc）">×</button></header><div id="dbody"></div></aside>
 
@@ -259,22 +294,68 @@ vp.addEventListener("wheel", (e) => {
   const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
   zoomAt(e.clientX, e.clientY, Math.exp(-d * (e.ctrlKey ? 0.01 : 0.0016)));
 }, { passive: false });
-let drag = null;
+// 指针：鼠标 / 单指拖动平移，双指捏合缩放（以两指中点为中心，同时跟随中点平移）
+const ptrs = new Map();  // pointerId → {x, y}
+let gest = null;         // 当前手势的起点
+let suppressClick = false;
+function gestStart() {
+  const ps = [...ptrs.values()];
+  if (ps.length === 1) gest = { mode: "pan", x: ps[0].x, y: ps[0].y, view: { ...view }, moved: gest?.moved || false };
+  else if (ps.length >= 2) {
+    const [a, b] = ps;
+    gest = { mode: "pinch", cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), view: { ...view }, moved: true };
+  } else gest = null;
+}
 vp.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return;
-  drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, id: e.pointerId };
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size >= 2) { try { vp.setPointerCapture(e.pointerId); } catch { /* 已释放 */ } }
+  gestStart();
 });
 window.addEventListener("pointermove", (e) => {
-  if (!drag) return;
-  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-  if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; vp.classList.add("dragging"); vp.setPointerCapture(drag.id); }
-  if (drag.moved) { view.x = drag.vx + dx; view.y = drag.vy + dy; apply(); }
+  if (!ptrs.has(e.pointerId) || !gest) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (gest.mode === "pan") {
+    const p = ptrs.values().next().value, dx = p.x - gest.x, dy = p.y - gest.y;
+    if (!gest.moved && Math.hypot(dx, dy) > (e.pointerType === "mouse" ? 4 : 8)) {
+      gest.moved = true; vp.classList.add("dragging");
+      try { vp.setPointerCapture(e.pointerId); } catch { /* 已释放 */ }
+    }
+    if (gest.moved) { view.x = gest.view.x + dx; view.y = gest.view.y + dy; apply(); }
+  } else {
+    const [a, b] = [...ptrs.values()];
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, dist = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    const v0 = gest.view, k = Math.min(5, Math.max(0.04, v0.k * (dist / gest.dist)));
+    // 起点时两指中点下的世界坐标，保持在现在的两指中点下
+    const wx = (gest.cx - v0.x) / v0.k, wy = (gest.cy - v0.y) / v0.k;
+    view = { k, x: cx - wx * k, y: cy - wy * k }; apply();
+  }
 });
-window.addEventListener("pointerup", () => {
-  if (drag && drag.moved) { vp.classList.remove("dragging"); suppressClick = true; setTimeout(() => (suppressClick = false), 0); }
-  drag = null;
+function pointerEnd(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  const moved = gest && gest.moved;
+  if (ptrs.size) { gestStart(); if (gest) gest.moved = true; return; }  // 双指松开一指：剩下的一指接着平移，不当点击
+  if (moved) { vp.classList.remove("dragging"); suppressClick = true; setTimeout(() => (suppressClick = false), 0); }
+  gest = null;
+}
+window.addEventListener("pointerup", pointerEnd);
+window.addEventListener("pointercancel", pointerEnd);
+// Safari 的原生捏合手势会缩放整页，拦下
+for (const t of ["gesturestart", "gesturechange"]) document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+// 触屏没有可靠的 dblclick：两次轻点（300ms 内、距离近）当双击
+let lastTap = null;
+vp.addEventListener("pointerup", (e) => {
+  if (e.pointerType === "mouse" || suppressClick) return;
+  const now = performance.now();
+  if (lastTap && now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) { focusEl(e.target); lastTap = null; }
+  else lastTap = { t: now, x: e.clientX, y: e.clientY };
 });
-let suppressClick = false;
+function focusEl(target) {
+  const el = target.closest(".card, .node"); if (!el) return false;
+  const p = pos[el.dataset.id || el.dataset.key]; if (p) animateTo({ x: p.x - 20, y: p.y - 20, w: p.w + 40, h: p.h + 40 });
+  return true;
+}
 vp.addEventListener("click", (e) => {
   if (suppressClick) return;
   const cell = e.target.closest(".cell");
@@ -284,10 +365,7 @@ vp.addEventListener("click", (e) => {
   else if (card) openDrawer(card.dataset.id);
   else if (node) { const n = data.nodes.find((x) => x.key === node.dataset.key); if (n) openNode(n); }
 });
-vp.addEventListener("dblclick", (e) => {
-  const el = e.target.closest(".card, .node"); if (!el) return;
-  const p = pos[el.dataset.id || el.dataset.key]; if (p) animateTo({ x: p.x - 20, y: p.y - 20, w: p.w + 40, h: p.h + 40 });
-});
+vp.addEventListener("dblclick", (e) => { focusEl(e.target); });
 $("#fit").onclick = () => animateTo(bounds);
 $("#zin").onclick = () => zoomAt(vp.clientWidth / 2, vp.clientHeight / 2, 1.3);
 $("#zout").onclick = () => zoomAt(vp.clientWidth / 2, vp.clientHeight / 2, 1 / 1.3);
@@ -397,6 +475,16 @@ function ago(s) {
   if (s < 3600) return Math.round(s / 60) + " 分钟前";
   return (s / 3600).toFixed(1) + " 小时前";
 }
+// 状态后面括号里的时间：运行中 / 失联看最后一次心跳，已结束看最后更新
+function stateAge(l) {
+  if (l.state === "running" || l.state === "lost") return l.heartbeat_age_s;
+  const t = Date.parse(l.updated_at || ""), now = Date.parse(data.now || "");
+  return Number.isFinite(t) && Number.isFinite(now) ? Math.max(0, (now - t) / 1000) : null;
+}
+function stateText(l) {
+  const a = stateAge(l);
+  return (STATES[l.state] || l.state) + (a != null ? `（${ago(a)}）` : "");
+}
 function goalRows(goal) {
   const g = goal || {}; const rows = [];
   if (g.target != null) rows.push(["在改进", g.target]);
@@ -452,6 +540,41 @@ function spark(sr, w = 250, h = 50) {
   const tl = t != null ? `<line x1="0" x2="${w}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--done)" stroke-dasharray="4 3" stroke-width="1.2"/>` : "";
   return `<div class="spark">${esc(sr.label)}${t != null ? ` · 目标 ${fmt(t)}` : ""}<svg width="${w}" height="${h}" style="display:block">${tl}<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2"/>${pts}</svg></div>`;
 }
+// 抽屉里的大图：x 轴是轮次（series.x 给了就用它，否则第 i 个值 = 第 i+1 轮），y 轴是指标
+function niceTicks(lo, hi, n = 4) {
+  const span = hi - lo || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => span / x <= n) || 10 * mag;
+  // 刻度要盖住数据：从 lo 往下取整到 hi 往上取整
+  const out = []; for (let v = Math.floor(lo / step + 1e-9) * step; v < hi + step * (1 - 1e-6); v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function chart(sr) {
+  const vals = (sr.values || []).map((v) => (typeof v === "number" ? v : null));
+  const xs = Array.isArray(sr.x) && sr.x.length === vals.length ? sr.x.map((v) => +v) : vals.map((_, i) => i);
+  const pts = vals.map((v, i) => [xs[i], v]).filter(([, v]) => v != null);
+  if (!pts.length) return "";
+  const t = typeof sr.target === "number" ? sr.target : null;
+  // 按抽屉的实际宽度画，字号在手机上也不会被缩小
+  const W = Math.max(280, Math.min(700, ($("#dbody").clientWidth || 600) - 30)), H = W < 420 ? 190 : 220, L = 48, R = 12, T = 12, B = 40;
+  const ys = pts.map(([, v]) => v).concat(t != null ? [t] : []);
+  let lo = Math.min(0, ...ys), hi = Math.max(...ys);
+  if (hi - lo < 1e-9) hi = lo + 1;
+  const yt = niceTicks(lo, hi); lo = Math.min(lo, yt[0]); hi = Math.max(hi, yt[yt.length - 1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const X = (x) => (x1 === x0 ? (L + W - R) / 2 : L + ((x - x0) / (x1 - x0)) * (W - L - R)), Y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  let g = "";
+  for (const v of yt) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${fmt(v)}</text>`;
+  const step = Math.max(1, Math.ceil((x1 - x0 + 1) / 12));
+  for (let x = x0; x <= x1; x += step) g += `<line x1="${X(x)}" x2="${X(x)}" y1="${H - B}" y2="${H - B + 4}" stroke="var(--faint)"/><text x="${X(x)}" y="${H - B + 16}" text-anchor="middle" font-size="11" fill="var(--muted)">${x + 1}</text>`;
+  g += `<line x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}" stroke="var(--faint)"/><line x1="${L}" x2="${L}" y1="${T}" y2="${H - B}" stroke="var(--faint)"/>`;
+  g += `<text x="${(L + W - R) / 2}" y="${H - 4}" text-anchor="middle" font-size="12" fill="var(--muted)">${esc(sr.x_label || "轮次")}</text>`;
+  g += `<text transform="translate(12 ${(T + H - B) / 2}) rotate(-90)" text-anchor="middle" font-size="12" fill="var(--muted)">${esc(sr.y_label || sr.label || "")}</text>`;
+  if (t != null) g += `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--done)" stroke-dasharray="5 4" stroke-width="1.4"/><text x="${W - R}" y="${Y(t) - 5}" text-anchor="end" font-size="11" fill="var(--done)">目标 ${fmt(t)}</text>`;
+  const d = pts.map(([x, v], i) => (i ? "L" : "M") + X(x).toFixed(1) + "," + Y(v).toFixed(1)).join("");
+  g += `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+  g += pts.map(([x, v]) => `<circle cx="${X(x)}" cy="${Y(v)}" r="3.4" fill="var(--accent)"><title>第 ${x + 1} 轮：${fmt(v)}</title></circle>`).join("");
+  return `<div class="chart"><div class="ct">${esc(sr.label)}</div><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}</svg></div>`;
+}
 function gridHtml(l) {
   const d = details[l.id];
   if (!d) return `<div class="muted" style="margin:auto">加载每轮数据…</div>`;
@@ -479,16 +602,16 @@ function cardHtml(l) {
   const k0 = (l.kpis || []).find((k) => typeof k.value === "number" && typeof k.target === "number");
   const itText = l.iteration == null ? "" : `第 ${l.iteration + 1}${l.iterations ? "/" + l.iterations : ""} 轮`;
   const far = `<div class="far"><div class="t">${esc(l.title)}</div>
-    <div class="s"><span class="dot" style="background:var(--st)"></span>${STATES[st]}${itText ? ` · ${itText}` : ""}${l.stage && st === "running" ? ` · ${STAGE_ZH[l.stage] || l.stage}` : ""}</div>
+    <div class="s"><span class="dot" style="background:var(--st)"></span>${stateText(l)}${itText ? ` · ${itText}` : ""}${l.stage && st === "running" ? ` · ${STAGE_ZH[l.stage] || l.stage}` : ""}</div>
     ${gr.length ? `<div class="g">${esc(gr[0][1])}</div>` : ""}
     ${k0 ? `<div class="big-bar"><i style="width:${Math.min(100, (k0.value / k0.target) * 100)}%"></i></div>` : ""}</div>`;
   const hd = `<div class="hd nf"><div class="ttl"><b>${esc(l.title)}</b><small>${esc(l.subtitle || l.path)}</small></div>
-    <span class="chip"><span class="dot" style="background:var(--st)"></span>${STATES[st]}${st === "running" && l.stage ? " · " + (STAGE_ZH[l.stage] || l.stage) : ""}</span></div>
+    <span class="chip"><span class="dot" style="background:var(--st)"></span>${stateText(l)}${st === "running" && l.stage ? " · " + (STAGE_ZH[l.stage] || l.stage) : ""}</span></div>
     <dl class="goal nf">${gr.length ? gr.map(([k, v]) => `<dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join("") : `<span class="none">没有 goal（旧 run 或 profile 没设置 Profile.goal）</span>`}</dl>`;
   const side = `${(l.kpis || []).slice(0, 4).map(kpiHtml).join("")}${(l.series || []).slice(0, 1).map((s) => spark(s)).join("")}`;
   const mid = `<div class="body nf mid-only">${ring(l, 200)}<div class="side">${side || `<div class="muted">没有指标（没有装对应的 viz 插件）</div>`}</div></div>`;
   const near = `<div class="body nf near-only" style="flex-direction:column;gap:6px">${gridHtml(l)}</div>`;
-  const ft = `<div class="ft nf">${l.started_at ? `<span>开始 ${esc(l.started_at.replace("T", " ").slice(0, 16))}</span>` : ""}${l.heartbeat_age_s != null && st === "running" ? `<span>心跳 ${ago(l.heartbeat_age_s)}</span>` : ""}${l.pid ? `<span>pid ${esc(l.pid)}@${esc(l.host)}</span>` : ""}${l.reason ? `<span>原因：${esc(l.reason)}</span>` : ""}${l.error || l.plugin_error ? `<span class="err" title="${esc(l.error || l.plugin_error)}">${esc(l.error || "插件：" + l.plugin_error)}</span>` : ""}</div>`;
+  const ft = `<div class="ft nf">${l.started_at ? `<span>开始 ${esc(l.started_at.replace("T", " ").slice(0, 16))}</span>` : ""}${l.pid ? `<span>pid ${esc(l.pid)}@${esc(l.host)}</span>` : ""}${l.reason ? `<span>原因：${esc(l.reason)}</span>` : ""}${l.error || l.plugin_error ? `<span class="err" title="${esc(l.error || l.plugin_error)}">${esc(l.error || "插件：" + l.plugin_error)}</span>` : ""}</div>`;
   return far + hd + mid + near + ft;
 }
 function nodeEl(n) {
@@ -622,36 +745,93 @@ function yamlHtml(e) {
     return `<details class="ysec${x.raw ? " raw" : ""}" data-k="${esc(k)}"${open ? " open" : ""}><summary><b>${esc(x.title)}</b>${x.note ? ` <span class="muted">· ${esc(x.note)}</span>` : ""}</summary><pre class="y">${esc(x.yaml)}</pre></details>`;
   }).join("");
 }
+// ---------- 内部过程 ----------
+// inner 的元素可以是事件 {kind, text, detail?}，也可以是会话 {kind: "session", ...}（见 data.py 文档）
+function evHtml(e) {
+  return `<div class="ev ${esc(e.kind)}"><span class="kind">${esc(e.kind)}</span><span class="txt">${esc(e.text)}</span>${e.detail ? `<details><summary>展开</summary><pre>${esc(e.detail)}</pre></details>` : ""}</div>`;
+}
+function sessionsOf(inner) {
+  // 旧格式（只有事件）：当成一个没有标题的会话
+  if (!inner.some((x) => x && x.kind === "session")) return inner.length ? [{ kind: "session", title: "", events: inner, legacy: true }] : [];
+  const out = []; let loose = [];
+  for (const x of inner) {
+    if (x && x.kind === "session") { if (loose.length) { out.push({ kind: "session", title: "", events: loose, legacy: true }); loose = []; } out.push(x); }
+    else loose.push(x);
+  }
+  if (loose.length) out.push({ kind: "session", title: "", events: loose, legacy: true });
+  return out;
+}
+const sessOpen = {};
+function sessionHtml(x, i, keyBase, openByDefault) {
+  const evs = x.events || [];
+  if (x.legacy) return evs.map(evHtml).join("");
+  const k = `${keyBase}/${i}/${x.title}`;
+  const open = k in sessOpen ? sessOpen[k] : openByDefault;
+  const badges = [];
+  if (x.fresh === true) badges.push(`<span class="badge fresh" title="新进程、新会话，不带之前的对话历史；它知道的只有下面的输入">新会话 · 从头开始</span>`);
+  else if (x.fresh === false) badges.push(`<span class="badge cont" title="续接之前的会话，带着之前的对话历史">续接${x.resumes ? " " + esc(x.resumes) : "上一会话"}</span>`);
+  if (x.status === "running") badges.push(loopRunning ? `<span class="badge run">运行中</span>` : `<span class="badge err" title="loop 已经不在运行，这个会话没有正常结束">未结束</span>`);
+  else if (x.status === "error") badges.push(`<span class="badge err">出错</span>`);
+  const tools = evs.filter((e) => e.kind === "tool").length;
+  const meta = [x.meta, `${evs.length} 条${tools ? ` · ${tools} 次工具调用` : ""}`, x.session ? "session " + String(x.session).slice(0, 8) : ""].filter(Boolean).join(" · ");
+  let b = "";
+  if ((x.inputs || []).length) {
+    b += `<div class="lane">输入 · 会话开始时拿到的全部内容</div>`;
+    b += x.inputs.map((inp, j) => {
+      const ik = `${k}/in/${j}`, io = ik in sessOpen ? sessOpen[ik] : !inp.collapsed;
+      return `<details class="inp" data-k="${esc(ik)}"${io ? " open" : ""}><summary><b>${esc(inp.title)}</b>${inp.note ? ` <span class="muted">· ${esc(inp.note)}</span>` : ""}</summary><pre>${esc(inp.text)}</pre></details>`;
+    }).join("");
+  }
+  b += `<div class="lane">过程</div>${evs.length ? evs.map(evHtml).join("") : '<div class="muted">还没有事件</div>'}`;
+  if (x.output) b += `<div class="lane">输出 · 交给下一步</div><div class="inp"><pre>${esc(x.output)}</pre></div>`;
+  const stage = x.stage ? (STAGE_ZH[x.stage] || x.stage) : "";
+  return `<details class="sess" data-k="${esc(k)}"${open ? " open" : ""}><summary><span class="sn">#${i + 1}</span><span class="st">${esc(x.title || stage || "会话")}</span>${badges.join("")}<span class="meta">${esc(meta)}</span></summary><div class="sbody">${b}</div></details>`;
+}
+let loopRunning = false;
+function innerHtml(list, keyBase, stage) {
+  const all = sessionsOf(list);
+  const shown = stage ? all.map((x, i) => [x, i]).filter(([x]) => x.stage === stage) : all.map((x, i) => [x, i]);
+  if (!shown.length) return "";
+  const single = shown.length === 1;
+  return shown.map(([x, i], n) => sessionHtml(x, i, keyBase, single) + (!stage && n < shown.length - 1 && !x.legacy ? `<div class="flow">↓</div>` : "")).join("");
+}
 function drawDrawer() {
   if (!sel) return;
   const l = data.loops.find((x) => x.id === sel.id); if (!l) return;
   $("#dtitle").textContent = l.title;
   $("#dpath").textContent = l.path;
   const body = $("#dbody"), scroll = body.scrollTop;
-  const meta = [["状态", STATES[l.state] || l.state], ["当前", l.iteration != null ? `第 ${l.iteration + 1}${l.iterations ? "/" + l.iterations : ""} 轮 · ${STAGE_ZH[l.stage] || l.stage || "-"}` : "-"],
-    ["profile", l.profile], ["进程", l.pid ? `${l.pid}@${l.host}` : null], ["开始", l.started_at], ["心跳", l.heartbeat_age_s != null ? ago(l.heartbeat_age_s) : null],
+  const meta = [["状态", stateText(l)], ["当前", l.iteration != null ? `第 ${l.iteration + 1}${l.iterations ? "/" + l.iterations : ""} 轮 · ${STAGE_ZH[l.stage] || l.stage || "-"}` : "-"],
+    ["profile", l.profile], ["进程", l.pid ? `${l.pid}@${l.host}` : null], ["开始", l.started_at],
     ["原因", l.reason], ["错误", l.error], ["插件错误", l.plugin_error]].filter(([, v]) => v != null && v !== "");
   const goal = Object.entries(l.goal || {}).map(([k, v]) => `<dt>${esc(k === "target" ? "在改进" : k === "metric" ? "指标" : k)}</dt><dd>${esc(typeof v === "object" ? JSON.stringify(v) : v)}</dd>`).join("");
   let s = `<div class="sec"><h4>目标</h4>${goal ? `<dl class="kv">${goal}</dl>` : '<div class="muted">没有 goal</div>'}</div>`;
   s += `<div class="sec"><h4>运行</h4><dl class="kv">${meta.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>`;
-  if ((l.kpis || []).length || (l.series || []).length) s += `<div class="sec"><h4>指标</h4>${(l.kpis || []).map(kpiHtml).join("")}${(l.series || []).map((x) => spark(x, 600, 80)).join("")}</div>`;
+  if ((l.kpis || []).length || (l.series || []).length) s += `<div class="sec"><h4>指标</h4>${(l.kpis || []).map(kpiHtml).join("")}${(l.series || []).map(chart).join("")}</div>`;
   if (!full) { body.innerHTML = s + '<div class="muted">加载中…</div>'; return; }
   const its = full.iterations || [];
   s += `<div class="sec"><h4>轮次</h4><div class="tabs" id="itabs">${its.map((it) => `<button data-i="${it.iteration}" class="${it.iteration === sel.iter ? "on" : ""}">#${it.iteration + 1}</button>`).join("") || '<span class="muted">还没有阶段输出</span>'}</div>`;
   const it = its.find((x) => x.iteration === sel.iter);
   const inner = (full.inner || {})[String(sel.iter)] || [];
-  s += `<div class="tabs" id="stabs">${STAGES.map((st) => `<button data-s="${st}" class="${sel.tab === "stage" && st === sel.stage ? "on" : ""}${it && it.stages[st] && !it.stages[st].pending ? "" : " miss"}">${STAGE_ZH[st]} ${st}</button>`).join("")}${inner.length ? `<button data-s="__inner" class="${sel.tab === "inner" ? "on" : ""}">内部过程 · ${inner.length}</button>` : ""}</div>`;
+  const sess = sessionsOf(inner), nSess = sess.filter((x) => !x.legacy).length;
+  const innerKey = `${sel.id}/${sel.iter}`;
+  loopRunning = l.state === "running";
+  s += `<div class="tabs" id="stabs">${STAGES.map((st) => `<button data-s="${st}" class="${sel.tab === "stage" && st === sel.stage ? "on" : ""}${it && it.stages[st] && !it.stages[st].pending ? "" : " miss"}">${STAGE_ZH[st]} ${st}</button>`).join("")}${inner.length ? `<button data-s="__inner" class="${sel.tab === "inner" ? "on" : ""}">内部过程 · ${nSess ? nSess + " 个会话" : inner.length}</button>` : ""}</div>`;
   if (sel.tab === "inner") {
-    s += inner.map((e) => `<div class="ev ${esc(e.kind)}"><span class="kind">${esc(e.kind)}</span><span class="txt">${esc(e.text)}</span>${e.detail ? `<details><summary>展开</summary><pre>${esc(e.detail)}</pre></details>` : ""}</div>`).join("");
+    if (nSess) s += `<p class="muted" style="font-size:12px">这一轮按时间顺序的每个会话。每个会话标明是从头开始还是续接，「输入」是它开始时拿到的全部内容（例如上一阶段的交接）。</p>`;
+    s += innerHtml(inner, innerKey);
   } else {
     const e = it && it.stages[sel.stage] && !it.stages[sel.stage].pending ? it.stages[sel.stage] : null;
     const pend = it && it.stages[sel.stage] && it.stages[sel.stage].pending ? it.stages[sel.stage].note : "";
     if (pend) s += `<p>${esc(pend)}</p>`;
     s += e ? `${e.note ? `<p>${esc(e.note)}</p>` : ""}<div class="muted" style="font-size:12px;margin-bottom:4px">写入于 ${esc(e.mtime)}</div>${yamlHtml(e)}` : `<div class="muted">${l.state === "running" && l.iteration === sel.iter && l.stage === sel.stage ? "这个阶段正在运行，还没有输出" : "没有这个阶段的输出"}</div>`;
+    const own = innerHtml(inner, innerKey, sel.stage);
+    if (own) s += `<div class="lane" style="margin-top:14px;font-size:12px;color:var(--muted);font-weight:600">这个阶段的会话</div>${own}`;
   }
   s += "</div>";
   body.innerHTML = s; body.scrollTop = scroll;
   for (const d of body.querySelectorAll("details.ysec")) d.ontoggle = () => { secOpen[d.dataset.k] = d.open; };
+  for (const d of body.querySelectorAll("details.sess, details.inp")) d.ontoggle = () => { sessOpen[d.dataset.k] = d.open; };
   for (const b of body.querySelectorAll("#itabs button")) b.onclick = () => { sel.iter = +b.dataset.i; drawDrawer(); };
   for (const b of body.querySelectorAll("#stabs button")) b.onclick = () => { if (b.dataset.s === "__inner") sel.tab = "inner"; else { sel.tab = "stage"; sel.stage = b.dataset.s; } body.scrollTop = 0; drawDrawer(); };
 }

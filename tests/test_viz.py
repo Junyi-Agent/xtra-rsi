@@ -210,7 +210,21 @@ def test_plugin_describe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
             "goal": {"target": "kernel"},
             "kpis": [{"label": "a", "value": 1}],
             "stage_notes": {"0": {"observe": "看了看"}},
-            "inner": {"0": [{"kind": "tool", "text": "ls"}]} if detail else {},
+            "inner": {
+                "0": [
+                    {"kind": "tool", "text": "ls"},
+                    {
+                        "kind": "session",
+                        "title": "observe",
+                        "stage": "observe",
+                        "fresh": True,
+                        "inputs": [{"title": "上一阶段交接", "text": "x: 1"}],
+                        "events": [{"kind": "text", "text": "hi"}],
+                    },
+                ]
+            }
+            if detail
+            else {},
         }
 
     monkeypatch.setattr(data, "_plugins", lambda: [describe])
@@ -227,7 +241,9 @@ def test_plugin_describe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     d = data.loop_detail("x", tmp_path / "mine", full=True)
     it0 = cast("list[Payload]", d["iterations"])[0]
     assert cast("dict[str, Payload]", it0["stages"])["observe"]["note"] == "看了看"
-    assert cast("dict[str, object]", d["inner"])["0"]
+    inner0 = cast("list[Payload]", cast("dict[str, object]", d["inner"])["0"])
+    assert inner0[1]["kind"] == "session"
+    assert inner0[1]["fresh"] is True
 
 
 def test_plugin_sections_split_stage_output(
