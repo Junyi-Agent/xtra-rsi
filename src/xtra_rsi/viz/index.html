@@ -167,6 +167,12 @@ pre.y { margin: 0; background: var(--panel-2); border: 1px solid var(--line); bo
 .ev.text .kind { color: var(--done); } .ev.text { border-color: var(--done); }
 .ev.error { border-color: var(--failed); } .ev.error .kind { color: var(--failed); }
 .ev .txt { white-space: pre-wrap; word-break: break-word; }
+details.grp { margin: 4px 0; border-left: 3px solid var(--line); border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--panel-2) 60%, transparent); }
+details.grp > summary { cursor: pointer; padding: 4px 10px; font-size: 12.5px; color: var(--muted); }
+details.grp > summary b { color: var(--accent); font-weight: 600; }
+details.grp > summary .bad { color: var(--failed); }
+details.grp[open] > summary { border-bottom: 1px dashed var(--line); }
+details.grp .gb { padding: 0 0 4px 6px; }
 .ev details summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
 .ev details pre { font: 11.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; background: var(--panel-2); padding: 6px 8px; border-radius: 6px; }
 .muted { color: var(--muted); }
@@ -198,7 +204,46 @@ pre.y { margin: 0; background: var(--panel-2); border: 1px solid var(--line); bo
 .sess .inp pre { margin: 0; padding: 4px 10px 8px; font: 11.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow: auto; }
 .flow { color: var(--muted); font-size: 12px; text-align: center; margin: -4px 0 6px; }
 
+/* 时间线视图：每个 loop 一条泳道，横轴是时间，色块是阶段 */
+:root { --s-observe: #8a97b8; --s-reasoning: #9a76d6; --s-decision: #d08a3c; --s-action: #3b6fe0; --s-feedback: #2a9d8f; --lw: 270px; }
+.tools button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tools .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
+#tl { position: fixed; left: 0; right: 0; bottom: 0; top: 60px; display: none; flex-direction: column; z-index: 2; background: var(--bg); }
+body.tl-mode #tl { display: flex; }
+body.tl-mode #viewport, body.tl-mode #hint, body.tl-mode .canvas-only { display: none; }
+#tlbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 6px 12px 8px; font-size: 12.5px; color: var(--muted); }
+#tlbar .tools { margin-left: 0; box-shadow: none; }
+#tlbar .lg { display: flex; gap: 10px; flex-wrap: wrap; }
+#tlbar .lg span { display: flex; gap: 4px; align-items: center; }
+#tlbar .lg i { width: 11px; height: 11px; border-radius: 3px; background: var(--sc); display: inline-block; }
+#tlbar .est { color: var(--stopped); }
+#tlhead { display: flex; height: 30px; flex: none; background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+#tlhead .lc { width: var(--lw); flex: none; border-right: 1px solid var(--line); font-size: 11.5px; color: var(--muted); padding: 7px 10px; }
+#tlaxis { position: relative; flex: 1; overflow: hidden; }
+.tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); font-size: 11px; color: var(--muted); padding: 7px 0 0 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#tlrows { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.tg { font-weight: 650; color: var(--muted); padding: 12px 12px 4px; font-size: 13px; }
+.tg span { font-weight: 400; color: var(--faint); margin-left: 8px; }
+.tr { display: flex; height: 36px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.tr:hover { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.tr .lc { width: var(--lw); flex: none; padding: 3px 10px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; border-right: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+.tr .lc b { font-size: 12.5px; font-weight: 600; display: flex; gap: 6px; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr .lc small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr.sel .lc { box-shadow: inset 3px 0 0 var(--accent); }
+.track { position: relative; flex: 1; overflow: hidden; touch-action: pan-y; cursor: grab; }
+.track.dragging { cursor: grabbing; }
+.track .msg { position: absolute; left: 10px; top: 9px; font-size: 12px; color: var(--faint); }
+.seg { position: absolute; top: 8px; height: 20px; min-width: 2px; border-radius: 3px; background-color: var(--sc); color: #fff; font-size: 10.5px; line-height: 20px; padding: 0 4px; overflow: hidden; white-space: nowrap; cursor: pointer; }
+.seg:hover { outline: 2px solid var(--text); outline-offset: 1px; z-index: 1; }
+.seg.est { opacity: .78; background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255,255,255,.22) 5px 7px); }
+.seg.running { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.3) 0 6px, transparent 6px 12px); background-size: 17px 17px; animation: tlstripes 1s linear infinite; }
+@keyframes tlstripes { to { background-position: 17px 0; } }
+.seg.failed, .seg.lost { box-shadow: inset 0 0 0 2px var(--failed); }
+.endmark { position: absolute; top: 8px; line-height: 20px; font-size: 13px; font-weight: 700; color: var(--failed); pointer-events: none; }
+.nowline { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--running); opacity: .55; pointer-events: none; }
+
 @media (max-width: 640px) {
+  :root { --lw: 130px; }
   /* 手机：顶栏压成两行，不挡画布 */
   #bar { top: 8px; left: 8px; right: 8px; gap: 6px; }
   .brand { padding: 4px 9px; font-size: 13px; }
@@ -221,12 +266,23 @@ pre.y { margin: 0; background: var(--panel-2); border: 1px solid var(--line); bo
   <input id="search" placeholder="搜索标题、目标、路径" autocomplete="off">
   <div class="tools">
     <span id="conn">连接中…</span>
-    <button id="fit" title="适配全部（F）">适配全部</button>
-    <button id="zout" title="缩小">−</button><span id="zoom">100%</span><button id="zin" title="放大">+</button>
+    <button id="mode-canvas" class="on" title="可缩放的卡片画布">画布</button><button id="mode-tl" title="每个 loop 一条泳道，横轴是时间">时间线</button><span class="sep canvas-only"></span>
+    <button id="fit" class="canvas-only" title="适配全部（F）">适配全部</button>
+    <button id="zout" class="canvas-only" title="缩小">−</button><span id="zoom" class="canvas-only">100%</span><button id="zin" class="canvas-only" title="放大">+</button>
   </div>
 </div>
 <div id="hint">滚轮 / 双指缩放 · 拖动平移 · 双击卡片聚焦 · 放大到一定程度显示每轮每个阶段 · 点击看详情</div>
 <div id="empty"><div>没有找到 loop。<br>用 <code>rsi viz &lt;目录&gt;</code> 指向含 <code>status.yaml</code> 或 <code>iter-*/</code> 的 run 目录。</div></div>
+<div id="tl">
+  <div id="tlbar">
+    <div class="tools"><button id="tl-abs" title="横轴是真实时间，能看出各个 loop 同时在跑什么">绝对时间</button><button id="tl-rel" title="每个 loop 从自己的开始算起，用来比较进度">从开始算起</button><span class="sep"></span><button id="tl-fit" title="显示全部时间（F）">适配</button></div>
+    <div class="lg" id="tl-legend"></div>
+    <span id="tl-info"></span>
+    <span class="muted">Ctrl / ⌘ + 滚轮或双指缩放 · 拖动平移 · 点色块看那一轮那个阶段</span>
+  </div>
+  <div id="tlhead"><div class="lc">loop</div><div id="tlaxis"></div></div>
+  <div id="tlrows"></div>
+</div>
 <aside id="drawer"><header><div class="ttl"><b id="dtitle"></b><small id="dpath"></small></div><button class="x" id="dclose" title="关闭（Esc）">×</button></header><div id="dbody"></div></aside>
 
 <script>
@@ -372,10 +428,10 @@ $("#zout").onclick = () => zoomAt(vp.clientWidth / 2, vp.clientHeight / 2, 1 / 1
 window.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
   if (e.key === "Escape") closeDrawer();
-  if (e.key === "f" || e.key === "F") animateTo(bounds);
+  if (e.key === "f" || e.key === "F") { if (mode === "tl") { tlAuto = true; renderTimeline(); } else animateTo(bounds); }
 });
 $("#search").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); filter(); });
-window.addEventListener("resize", () => scheduleDetails());
+window.addEventListener("resize", () => { scheduleDetails(); if (mode === "tl") renderTimeline(); });
 
 // ---------- 布局 ----------
 function groupsOf(loops) {
@@ -655,12 +711,16 @@ function renderPills() {
     store.set("hidden", [...hiddenStates]); renderPills(); filter();
   };
 }
+function shown(l) {
+  const hay = [l.title, l.subtitle, l.path, l.group, JSON.stringify(l.goal)].join(" ").toLowerCase();
+  return !hiddenStates.has(l.state) && !(query && !hay.includes(query));
+}
 function filter() {
   for (const l of data.loops) {
     const el = world.querySelector(`.card[data-id="${l.id}"]`); if (!el) continue;
-    const hay = [l.title, l.subtitle, l.path, l.group, JSON.stringify(l.goal)].join(" ").toLowerCase();
-    el.classList.toggle("hidden", hiddenStates.has(l.state) || (query && !hay.includes(query)));
+    el.classList.toggle("hidden", !shown(l));
   }
+  if (mode === "tl") { renderTimeline(); loadTimeline(); }
 }
 
 // ---------- 数据 ----------
@@ -672,6 +732,7 @@ async function poll() {
     $("#conn").textContent = "更新于 " + new Date().toLocaleTimeString();
     $("#conn").classList.remove("bad");
     render();
+    if (mode === "tl") loadTimeline();
     if (sel) refreshDrawer();
   } catch (e) {
     $("#conn").textContent = "连接失败，重试中"; $("#conn").classList.add("bad");
@@ -761,10 +822,31 @@ function sessionsOf(inner) {
   if (loose.length) out.push({ kind: "session", title: "", events: loose, legacy: true });
   return out;
 }
+// 连续的工具调用（tool / result / thinking / 出错的 result）折叠成一行「N 次连续工具调用」，
+// 只把 agent 说的话（text）露在外面：人通常只想看它最后得出了什么。展开看每一步。
+const FOLD = new Set(["tool", "result", "thinking", "error"]);
+function evsHtml(evs, k) {
+  let out = "", i = 0;
+  while (i < evs.length) {
+    if (!FOLD.has(evs[i] && evs[i].kind)) { out += evHtml(evs[i]); i++; continue; }
+    let j = i; while (j < evs.length && FOLD.has(evs[j] && evs[j].kind)) j++;
+    const run = evs.slice(i, j), tools = run.filter((e) => e.kind === "tool");
+    if (!tools.length) { out += run.map(evHtml).join(""); i = j; continue; }  // 没有工具调用（单独的思考 / 报错）照常显示
+    const names = {};
+    for (const e of tools) { const n = String(e.text || "").split(":")[0].trim() || "tool"; names[n] = (names[n] || 0) + 1; }
+    const top = Object.entries(names).sort((a, b) => b[1] - a[1]);
+    const nThink = run.filter((e) => e.kind === "thinking").length, nErr = run.filter((e) => e.kind === "error").length;
+    const gk = `${k}/g/${i}`, open = gk in sessOpen ? sessOpen[gk] : false;
+    const sum = `<b>${tools.length} 次连续工具调用</b> · ${esc(top.slice(0, 4).map(([n, c]) => (c > 1 ? `${n} ×${c}` : n)).join(" · "))}${top.length > 4 ? " …" : ""}${nThink ? ` · ${nThink} 段思考` : ""}${nErr ? ` · <span class="bad">${nErr} 个出错</span>` : ""}`;
+    out += `<details class="grp" data-k="${esc(gk)}"${open ? " open" : ""}><summary>${sum}</summary><div class="gb">${run.map(evHtml).join("")}</div></details>`;
+    i = j;
+  }
+  return out;
+}
 const sessOpen = {};
 function sessionHtml(x, i, keyBase, openByDefault) {
   const evs = x.events || [];
-  if (x.legacy) return evs.map(evHtml).join("");
+  if (x.legacy) return evsHtml(evs, `${keyBase}/legacy${i}`);
   const k = `${keyBase}/${i}/${x.title}`;
   const open = k in sessOpen ? sessOpen[k] : openByDefault;
   const badges = [];
@@ -782,7 +864,7 @@ function sessionHtml(x, i, keyBase, openByDefault) {
       return `<details class="inp" data-k="${esc(ik)}"${io ? " open" : ""}><summary><b>${esc(inp.title)}</b>${inp.note ? ` <span class="muted">· ${esc(inp.note)}</span>` : ""}</summary><pre>${esc(inp.text)}</pre></details>`;
     }).join("");
   }
-  b += `<div class="lane">过程</div>${evs.length ? evs.map(evHtml).join("") : '<div class="muted">还没有事件</div>'}`;
+  b += `<div class="lane">过程</div>${evs.length ? evsHtml(evs, k) : '<div class="muted">还没有事件</div>'}`;
   if (x.output) b += `<div class="lane">输出 · 交给下一步</div><div class="inp"><pre>${esc(x.output)}</pre></div>`;
   const stage = x.stage ? (STAGE_ZH[x.stage] || x.stage) : "";
   return `<details class="sess" data-k="${esc(k)}"${open ? " open" : ""}><summary><span class="sn">#${i + 1}</span><span class="st">${esc(x.title || stage || "会话")}</span>${badges.join("")}<span class="meta">${esc(meta)}</span></summary><div class="sbody">${b}</div></details>`;
@@ -831,14 +913,209 @@ function drawDrawer() {
   s += "</div>";
   body.innerHTML = s; body.scrollTop = scroll;
   for (const d of body.querySelectorAll("details.ysec")) d.ontoggle = () => { secOpen[d.dataset.k] = d.open; };
-  for (const d of body.querySelectorAll("details.sess, details.inp")) d.ontoggle = () => { sessOpen[d.dataset.k] = d.open; };
+  for (const d of body.querySelectorAll("details.sess, details.inp, details.grp")) d.ontoggle = () => { sessOpen[d.dataset.k] = d.open; };
   for (const b of body.querySelectorAll("#itabs button")) b.onclick = () => { sel.iter = +b.dataset.i; drawDrawer(); };
   for (const b of body.querySelectorAll("#stabs button")) b.onclick = () => { if (b.dataset.s === "__inner") sel.tab = "inner"; else { sel.tab = "stage"; sel.stage = b.dataset.s; } body.scrollTop = 0; drawDrawer(); };
 }
 
+// ---------- 时间线 ----------
+// 每个 loop 一条泳道，色块是阶段的起止时间（/api/timeline）。横轴可缩放平移；纵向原生滚动。
+let mode = store.get("mode") === "tl" ? "tl" : "canvas";
+let tlRel = store.get("tlRel") === true;
+let tlData = {};           // loop id → {segments, estimated}
+let tlSkew = 0;            // 本机时钟 - 服务器时钟
+let tlView = null;         // 可见的时间范围 {a, b}（毫秒；相对模式下是距开始的毫秒）
+let tlAuto = true;         // 用户还没缩放 / 平移：每次渲染都适配全部（数据陆续到达时跟着变）
+let tlLoading = false;
+const rowsEl = $("#tlrows"), axisEl = $("#tlaxis");
+$("#tl-legend").innerHTML = STAGES.map((st) => `<span style="--sc:var(--s-${st})"><i></i>${STAGE_ZH[st]}</span>`).join("");
+function setMode(m) {
+  mode = m; store.set("mode", m);
+  document.body.classList.toggle("tl-mode", m === "tl");
+  $("#mode-canvas").classList.toggle("on", m !== "tl"); $("#mode-tl").classList.toggle("on", m === "tl");
+  if (m === "tl") { renderTimeline(); loadTimeline(); } else { apply(); }
+}
+function setRel(r) { tlRel = r; store.set("tlRel", r); tlAuto = true; $("#tl-abs").classList.toggle("on", !r); $("#tl-rel").classList.toggle("on", r); renderTimeline(); }
+$("#mode-canvas").onclick = () => setMode("canvas");
+$("#mode-tl").onclick = () => setMode("tl");
+$("#tl-abs").onclick = () => setRel(false);
+$("#tl-rel").onclick = () => setRel(true);
+$("#tl-fit").onclick = () => { tlAuto = true; renderTimeline(); };
+async function loadTimeline() {
+  if (tlLoading) return;
+  const ids = data.loops.filter(shown).map((l) => l.id).slice(0, 400);
+  if (!ids.length) { renderTimeline(); return; }
+  tlLoading = true;
+  try {
+    const r = await getJSON("/api/timeline?ids=" + encodeURIComponent(ids.join(",")));
+    const t = Date.parse(r.now); if (Number.isFinite(t)) tlSkew = Date.now() - t;
+    Object.assign(tlData, r.loops || {});
+    renderTimeline();
+  } catch { /* 下一轮再试 */ } finally { tlLoading = false; }
+}
+const tlNow = () => Date.now() - tlSkew;
+function tlRows() {
+  const out = [];
+  for (const [name, loops] of groupsOf(data.loops.filter(shown))) {
+    out.push({ group: name, n: loops.length });
+    for (const l of loops) {
+      const tl = tlData[l.id]; const now = tlNow();
+      const segs = (tl ? tl.segments : []).map((x) => ({ ...x, s: Date.parse(x.start), e: x.end ? Date.parse(x.end) : now })).filter((x) => Number.isFinite(x.s) && Number.isFinite(x.e));
+      const base = tlRel && segs.length ? Math.min(...segs.map((x) => x.s)) : 0;
+      out.push({ l, tl, segs, base });
+    }
+  }
+  return out;
+}
+function tlDomain(rows) {
+  let lo = Infinity, hi = -Infinity;
+  for (const r of rows) for (const x of r.segs || []) { lo = Math.min(lo, x.s - r.base); hi = Math.max(hi, x.e - r.base); }
+  if (!Number.isFinite(lo)) { const now = tlNow(); return tlRel ? { a: 0, b: 3600e3 } : { a: now - 3600e3, b: now }; }
+  const pad = Math.max(1000, (hi - lo) * 0.02);
+  return { a: lo - pad, b: hi + pad };
+}
+function dur(ms) {
+  const s = ms / 1000;
+  if (s < 1) return s.toFixed(2) + " 秒";
+  if (s < 60) return s.toFixed(s < 10 ? 1 : 0) + " 秒";
+  if (s < 3600) return `${Math.floor(s / 60)} 分 ${Math.round(s % 60)} 秒`;
+  return `${Math.floor(s / 3600)} 小时 ${Math.round((s % 3600) / 60)} 分`;
+}
+function shortDur(ms) {
+  const s = Math.round(ms / 1000);
+  if (s === 0) return "0";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return (h ? h + "h" : "") + (m ? m + "m" : "") + (r && !h ? r + "s" : "");
+}
+const pad2 = (n) => String(n).padStart(2, "0");
+function clock(t, secs) { const d = new Date(t); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}${secs ? ":" + pad2(d.getSeconds()) : ""}`; }
+function fullTime(t) { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${clock(t, true)}`; }
+const TICKS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400].map((x) => x * 1000);
+function tlTicks(a, b, W) {
+  const step = TICKS.find((x) => (b - a) / x <= Math.max(2, W / 110)) || 86400e3 * Math.ceil((b - a) / 86400e3 / Math.max(2, W / 110));
+  const off = tlRel ? 0 : new Date(a).getTimezoneOffset() * -60000;  // 绝对时间按本地时区对齐整点
+  const out = [];
+  for (let t = Math.ceil((a + off) / step) * step - off; t <= b; t += step) out.push(t);
+  return { step, ticks: out };
+}
+let tlRaf = 0;
+function scheduleTl() { if (!tlRaf) tlRaf = requestAnimationFrame(() => { tlRaf = 0; renderTimeline(); }); }
+function renderTimeline() {
+  if (mode !== "tl") return;
+  const rows = tlRows();
+  const full = tlDomain(rows);
+  if (tlAuto || !tlView) tlView = { ...full };
+  const { a, b } = tlView, W = Math.max(50, axisEl.clientWidth), span = b - a;
+  const X = (t) => ((t - a) / span) * W;
+  // 坐标轴
+  const { step, ticks } = tlTicks(a, b, W);
+  const daySpan = !tlRel && (new Date(a).toDateString() !== new Date(b).toDateString());
+  axisEl.innerHTML = ticks.map((t) => {
+    const lab = tlRel ? "+" + shortDur(t) : (daySpan && (new Date(t).getHours() === 0 && new Date(t).getMinutes() === 0 || t === ticks[0]) ? `${new Date(t).getMonth() + 1}/${new Date(t).getDate()} ` : "") + clock(t, step < 60e3);
+    return `<div class="tick" style="left:${X(t).toFixed(1)}px">${esc(lab)}</div>`;
+  }).join("");
+  // 泳道
+  const now = tlNow();
+  let html = "", nEst = 0, nLoops = 0;
+  for (const r of rows) {
+    if (r.group != null) { html += `<div class="tg">${esc(r.group)}<span>${r.n} 个 loop</span></div>`; continue; }
+    const l = r.l; nLoops++;
+    if (r.tl && r.tl.estimated && r.segs.length) nEst++;
+    const it = l.iteration == null ? "" : ` · 第 ${l.iteration + 1}${l.iterations ? "/" + l.iterations : ""} 轮`;
+    const lc = `<div class="lc" data-id="${l.id}" title="${esc(l.title + "\n" + l.path)}"><b><span class="dot" style="background:${stColor(l.state)}"></span>${esc(l.title)}</b><small>${esc(stateText(l))}${esc(it)}${r.tl && r.tl.estimated && r.segs.length ? " · 时间为估计" : ""}</small></div>`;
+    let tr = "";
+    if (!r.tl) tr = `<div class="msg">加载中…</div>`;
+    else if (!r.segs.length) tr = `<div class="msg">还没有阶段记录</div>`;
+    for (const x of r.segs) {
+      const s0 = x.s - r.base, e0 = x.e - r.base;
+      if (e0 < a || s0 > b) continue;
+      const left = X(s0), w = Math.max(2, X(e0) - left);
+      const cls = ["seg", r.tl.estimated ? "est" : "", x.outcome === "running" ? "running" : "", x.outcome === "failed" || x.outcome === "lost" ? x.outcome : ""].filter(Boolean).join(" ");
+      const lab = w > 70 ? `${STAGE_ZH[x.stage]} #${x.iteration + 1}` : w > 26 && x.stage === "action" ? `#${x.iteration + 1}` : "";
+      const tip = [`${l.title}`, `第 ${x.iteration + 1} 轮 · ${STAGE_ZH[x.stage]} ${x.stage}`, `开始 ${fullTime(x.s)}`,
+        x.outcome === "running" ? "正在运行" : `结束 ${fullTime(x.e)}${x.outcome === "lost" ? "（最后一次心跳，进程已经不在）" : x.outcome === "failed" ? "（失败）" : ""}`,
+        `耗时 ${dur(x.e - x.s)}`, r.tl.estimated ? "时间按阶段输出文件的修改时间估计（旧 run 没有 timeline.yaml）" : ""].filter(Boolean).join("\n");
+      tr += `<div class="${cls}" style="left:${left.toFixed(1)}px;width:${w.toFixed(1)}px;--sc:var(--s-${x.stage})" data-id="${l.id}" data-iter="${x.iteration}" data-stage="${x.stage}" title="${esc(tip)}">${lab}</div>`;
+      if (x.outcome === "failed" || x.outcome === "lost") tr += `<div class="endmark" style="left:${(left + w + 3).toFixed(1)}px">✗</div>`;
+    }
+    if (!tlRel && now >= a && now <= b) tr += `<div class="nowline" style="left:${X(now).toFixed(1)}px"></div>`;
+    html += `<div class="tr${sel && sel.id === l.id ? " sel" : ""}">${lc}<div class="track">${tr}</div></div>`;
+  }
+  if (!nLoops) html = `<div class="tg">没有符合筛选条件的 loop</div>`;
+  const top = rowsEl.scrollTop; rowsEl.innerHTML = html; rowsEl.scrollTop = top;
+  const shownN = data.loops.filter(shown).length;
+  $("#tl-info").innerHTML = `${nLoops} 个 loop${shownN > 400 ? "（只取前 400 个）" : ""} · 范围 ${esc(dur(span))}${nEst ? ` · <span class="est">${nEst} 个是旧 run，时间按文件修改时间估计</span>` : ""}`;
+}
+// 横向缩放：以 x（相对坐标轴左边的像素）处的时间为中心
+function tlZoom(x, factor) {
+  const full = tlDomain(tlRows()), W = Math.max(50, axisEl.clientWidth);
+  const { a, b } = tlView || full, span = b - a;
+  const ns = Math.min((full.b - full.a) * 5, Math.max(2000, span * factor));
+  const t = a + (x / W) * span;
+  tlView = { a: t - (x / W) * ns, b: t + (1 - x / W) * ns }; tlAuto = false; scheduleTl();
+}
+rowsEl.addEventListener("wheel", (e) => {
+  if (!tlView) return;
+  const x = e.clientX - axisEl.getBoundingClientRect().left;
+  if (e.ctrlKey || e.metaKey) { e.preventDefault(); tlZoom(x, Math.exp((e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY) * 0.01)); }
+  else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    e.preventDefault();
+    const d = (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * (e.deltaMode === 1 ? 16 : 1);
+    const dt = (d / Math.max(50, axisEl.clientWidth)) * (tlView.b - tlView.a);
+    tlView = { a: tlView.a + dt, b: tlView.b + dt }; tlAuto = false; scheduleTl();
+  }
+}, { passive: false });
+axisEl.addEventListener("wheel", (e) => { e.preventDefault(); tlZoom(e.clientX - axisEl.getBoundingClientRect().left, Math.exp((e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY) * 0.004)); }, { passive: false });
+// 拖动平移、双指捏合缩放（只管横向，纵向交给原生滚动）
+const tptr = new Map(); let tgest = null, tlSuppress = false;
+function tgStart() {
+  const ps = [...tptr.values()], v = tlView ? { ...tlView } : null;
+  if (!v) { tgest = null; return; }
+  if (ps.length === 1) tgest = { mode: "pan", x: ps[0], v, moved: tgest?.moved || false };
+  else if (ps.length >= 2) tgest = { mode: "pinch", d: Math.max(10, Math.abs(ps[0] - ps[1])), c: (ps[0] + ps[1]) / 2, v, moved: true };
+  else tgest = null;
+}
+rowsEl.addEventListener("pointerdown", (e) => {
+  if (!e.target.closest(".track") || (e.pointerType === "mouse" && e.button !== 0)) return;
+  tptr.set(e.pointerId, e.clientX); tgStart();
+});
+window.addEventListener("pointermove", (e) => {
+  if (!tptr.has(e.pointerId) || !tgest) return;
+  tptr.set(e.pointerId, e.clientX);
+  const left = axisEl.getBoundingClientRect().left, W = Math.max(50, axisEl.clientWidth), span = tgest.v.b - tgest.v.a;
+  if (tgest.mode === "pan") {
+    const dx = e.clientX - tgest.x;
+    if (!tgest.moved && Math.abs(dx) > (e.pointerType === "mouse" ? 4 : 10)) { tgest.moved = true; e.target.closest?.(".track")?.classList.add("dragging"); }
+    if (tgest.moved) { const dt = (-dx / W) * span; tlView = { a: tgest.v.a + dt, b: tgest.v.b + dt }; tlAuto = false; scheduleTl(); }
+  } else {
+    const [p, q] = [...tptr.values()], d = Math.max(10, Math.abs(p - q)), c = (p + q) / 2;
+    const ns = Math.max(2000, span * (tgest.d / d)), t = tgest.v.a + ((tgest.c - left) / W) * span;
+    tlView = { a: t - ((c - left) / W) * ns, b: t - ((c - left) / W) * ns + ns }; tlAuto = false; scheduleTl();
+  }
+});
+function tpEnd(e) {
+  if (!tptr.has(e.pointerId)) return;
+  tptr.delete(e.pointerId);
+  const moved = tgest && tgest.moved;
+  if (tptr.size) { tgStart(); if (tgest) tgest.moved = true; return; }
+  if (moved) { tlSuppress = true; setTimeout(() => (tlSuppress = false), 0); }
+  tgest = null;
+}
+window.addEventListener("pointerup", tpEnd);
+window.addEventListener("pointercancel", tpEnd);
+rowsEl.addEventListener("click", (e) => {
+  if (tlSuppress) return;
+  const seg = e.target.closest(".seg"), lc = e.target.closest(".lc");
+  if (seg) openDrawer(seg.dataset.id, +seg.dataset.iter, seg.dataset.stage);
+  else if (lc) openDrawer(lc.dataset.id);
+  if (seg || lc) scheduleTl();
+});
+
 let needFit = !view;
 if (!view) view = { k: 0.5, x: 40, y: 80 };
 apply();
+setRel(tlRel);
+setMode(mode);
 poll();
 </script>
 </body>
