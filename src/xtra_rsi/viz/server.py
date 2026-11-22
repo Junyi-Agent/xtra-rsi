@@ -3,6 +3,7 @@
 - ``GET /``：面板（单文件 HTML，无外部依赖）
 - ``GET /api/loops``：所有 loop 和节点的摘要（:func:`xtra_rsi.viz.data.snapshot`）
 - ``GET /api/loop?id=<id>[&full=1]``：一个 loop 每轮每个阶段的摘要，full 时附全文
+- ``GET /api/timeline?ids=<id>,<id>...``：这些 loop 每个阶段的起止时间（时间线视图）
 
 只读扫描时发现的目录，不接受任意路径。
 """
@@ -17,7 +18,7 @@ from importlib.resources import files
 from typing import TYPE_CHECKING, override
 from urllib.parse import parse_qs, urlparse
 
-from xtra_rsi.viz.data import Found, discover, loop_detail, snapshot
+from xtra_rsi.viz.data import Found, discover, loop_detail, snapshot, timelines
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -84,6 +85,9 @@ def make_handler(catalog: Catalog) -> type[BaseHTTPRequestHandler]:
                     self._json({"error": f"没有这个 loop: {lid}"}, 404)
                     return
                 self._json(loop_detail(lid, path, full=(q.get("full") or ["0"])[0] == "1"))
+            elif url.path == "/api/timeline":
+                ids = [x for x in (q.get("ids") or [""])[0].split(",") if x]
+                self._json(timelines(catalog.get(), ids))
             else:
                 self._json({"error": "not found"}, 404)
 

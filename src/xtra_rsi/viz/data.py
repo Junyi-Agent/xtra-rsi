@@ -34,6 +34,9 @@
     ``status`` 取 running / done / error
 
   只给事件的旧格式照旧显示成一条时间线。
+
+时间线视图（:func:`loop_timeline`）用框架记录的阶段起止时间（``timeline.yaml``，见
+:mod:`xtra_rsi.status`）；没有这个文件的旧 run 用阶段输出文件的修改时间估计，标为 ``estimated``。
 """
 
 from __future__ import annotations
@@ -49,8 +52,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from xtra_rsi.core import STAGE_ORDER
-from xtra_rsi.status import HEARTBEAT_S, STATUS_FILE
-from xtra_rsi.yamlio import YAMLError, dump, load_mapping
+from xtra_rsi.status import HEARTBEAT_S, STATUS_FILE, TIMELINE_FILE
+from xtra_rsi.yamlio import YAMLError, dump, load_mapping, loads
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -62,6 +65,8 @@ NODE_FILE = "node.yaml"
 MAX_DEPTH = 8
 MAX_LOOPS = 2000
 MAX_YAML_CHARS = 200_000
+MAX_TIMELINE_IDS = 400
+"""``/api/timeline`` 一次最多返回多少个 loop。"""
 _ITER_RE = re.compile(r"^iter-(\d+)$")
 _ID_RE = re.compile(r"^(?:root|n[0-9]{4,})$")
 _SKIP_DIRS = {"workspace", "node_modules", "__pycache__", "harness", "site-packages"}
@@ -387,6 +392,121 @@ def split_sections(obj: Payload, spec: Value | None) -> list[Payload]:
     if out and rest:
         out.append({"title": "其他", "note": None, "collapsed": False, "yaml": _clip(dump(rest))})
     return out
+
+
+# ---------- 时间线 ----------
+
+_tl_cache: dict[Path, tuple[int, int, list[Payload] | None]] = {}
+
+
+def _read_timeline(path: Path) -> list[Payload] | None:
+    """读 timeline.yaml（按 mtime 缓存）；文件不存在或读不了时返回 None。"""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    hit = _tl_cache.get(path)
+    if hit is not None and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit[2]
+    try:
+        raw = loads(path.read_text(encoding="utf-8"), where=str(path))
+    except (OSError, YAMLError, ValueError, UnicodeDecodeError):
+        # 进程在追加到一半时被杀会留下半项；整份当作读不了，退回估计
+        raw = None
+    items: list[Payload] | None
+    if raw is None and st.st_size == 0:
+        items = []
+    elif isinstance(raw, list):
+        items = [
+            cast("Payload", x)
+            for x in raw
+            if isinstance(x, dict)
+            and isinstance(x.get("iteration"), int)
+            and x.get("stage") in _STAGES
+        ]
+    else:
+        items = None
+    _tl_cache[path] = (st.st_mtime_ns, st.st_size, items)
+    return items
+
+
+def _iso(dt: datetime) -> str:
+    return dt.isoformat(timespec="milliseconds")
+
+
+def _estimated_segments(path: Path, status: Payload | None) -> list[Payload]:
+    """没有 timeline.yaml 时：阶段结束 = 输出文件的修改时间，开始 = 上一个阶段结束。"""
+    segs: list[Payload] = []
+    prev = _parse_time(status.get("started_at")) if status else None
+    for i, d in _iterations(path):
+        for s in _STAGES:
+            f = d / f"{s}.yaml"
+            try:
+                end = datetime.fromtimestamp(f.stat().st_mtime, UTC)
+            except OSError:
+                continue
+            start = prev if prev is not None and prev <= end else end
+            segs.append(
+                {
+                    "iteration": i,
+                    "stage": s,
+                    "start": _iso(start),
+                    "end": _iso(end),
+                    "outcome": "ok",
+                }
+            )
+            prev = end
+    return segs
+
+
+def loop_timeline(path: Path, now: datetime) -> Payload:
+    """一个 loop 每个阶段的起止时间，给时间线视图。
+
+    ``segments`` 按时间排序，每项 ``{iteration, stage, start, end, outcome}``；``end`` 为 null 表示
+    正在跑，``outcome`` 取 ok / failed / running / lost。``estimated`` 为真表示时间是按文件修改
+    时间估计的（旧 run 没有 timeline.yaml）。
+    """
+    status = read_yaml(path / STATUS_FILE)
+    recorded = _read_timeline(path / TIMELINE_FILE)
+    # 空文件只在新格式的 status 下可信（刚开始、还没有阶段跑完）
+    precise = recorded is not None and (
+        bool(recorded) or (status is not None and "stage_started_at" in status)
+    )
+    segs = list(recorded or []) if precise else _estimated_segments(path, status)
+    estimated = not precise
+    state, _age = liveness(status, now) if status is not None else ("unknown", None)
+    if status is not None and state in {"running", "lost"}:
+        it, st = status.get("iteration"), status.get("stage")
+        done = {(x.get("iteration"), x.get("stage")) for x in segs}
+        if isinstance(it, int) and st in _STAGES and (it, st) not in done:
+            started = _parse_time(status.get("stage_started_at"))
+            if started is None:  # 估计：上一个阶段结束时开始
+                last = _parse_time(segs[-1]["end"]) if segs else None
+                started = last or _parse_time(status.get("started_at"))
+            if started is not None:
+                hb = _parse_time(status.get("heartbeat_at"))
+                lost = state == "lost"
+                segs.append(
+                    {
+                        "iteration": it,
+                        "stage": st,
+                        "start": _iso(started),
+                        "end": _iso(hb) if lost and hb is not None else None,
+                        "outcome": "lost" if lost else "running",
+                    }
+                )
+    return {"segments": cast("Value", segs), "estimated": estimated}
+
+
+def timelines(found: Found, ids: list[str]) -> Payload:
+    """``/api/timeline`` 的内容：指定 loop 的时间线（不认识的 id 跳过）。"""
+    now = datetime.now(UTC)
+    out: Payload = {}
+    for lid in ids[:MAX_TIMELINE_IDS]:
+        path = found.loops.get(lid)
+        if path is not None:
+            out[lid] = loop_timeline(path, now)
+    return {"now": _iso(now), "loops": out}
 
 
 def node_summary(key: str, path: Path, found: Found) -> Payload:

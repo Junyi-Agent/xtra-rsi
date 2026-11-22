@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import socket
 import threading
 from datetime import UTC, datetime, timedelta
@@ -13,10 +14,10 @@ from xtra_rsi import status as status_mod
 from xtra_rsi.core import STAGE_ORDER, Profile, Stage, StopLoop, run_loop
 from xtra_rsi.nodes import NodeStore
 from xtra_rsi.profiles.toy import profile as toy
-from xtra_rsi.status import STATUS_FILE, StatusWriter
+from xtra_rsi.status import STATUS_FILE, TIMELINE_FILE, StatusWriter
 from xtra_rsi.viz import data
 from xtra_rsi.viz.server import serve
-from xtra_rsi.yamlio import dump, load_mapping
+from xtra_rsi.yamlio import dump, load_mapping, loads
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -102,6 +103,50 @@ def test_heartbeat_thread_refreshes(tmp_path: Path, monkeypatch: pytest.MonkeyPa
             _ = threading.Event().wait(0.02)
         w.finish(status_mod.RunState.DONE)
     assert beat.is_set()
+
+
+def _timeline(run_dir: Path) -> list[dict[str, object]]:
+    return cast("list[dict[str, object]]", loads((run_dir / TIMELINE_FILE).read_text()) or [])
+
+
+def test_timeline_records_each_stage(tmp_path: Path) -> None:
+    _ = run_loop(toy(), iterations=2, run_dir=tmp_path)
+    items = _timeline(tmp_path)
+    assert [(x["iteration"], x["stage"]) for x in items] == [
+        (i, s.value) for i in range(2) for s in STAGE_ORDER
+    ]
+    assert all(x["outcome"] == "ok" for x in items)
+    times = [datetime.fromisoformat(str(x[k])) for x in items for k in ("start", "end")]
+    assert times == sorted(times)
+    assert _status(tmp_path)["stage_started_at"] is None
+
+
+def test_timeline_stage_started_at_while_running(tmp_path: Path) -> None:
+    seen: list[object] = []
+
+    def spy(ctx: StageContext) -> Payload:
+        seen.append(_status(tmp_path)["stage_started_at"])
+        return {"i": ctx.iteration}
+
+    p = Profile(name="spy", stages=dict.fromkeys(STAGE_ORDER, spy))
+    _ = run_loop(p, iterations=1, run_dir=tmp_path)
+    assert all(isinstance(x, str) for x in seen)
+    assert [x["start"] for x in _timeline(tmp_path)] == seen
+
+
+def test_timeline_marks_failed_stage_and_resets(tmp_path: Path) -> None:
+    def boom(_ctx: StageContext) -> Payload:
+        msg = "坏了"
+        raise RuntimeError(msg)
+
+    with pytest.raises(RuntimeError):
+        _ = run_loop(toy().with_stage(Stage.ACTION, boom), iterations=2, run_dir=tmp_path)
+    items = _timeline(tmp_path)
+    assert [x["stage"] for x in items] == ["observe", "reasoning", "decision", "action"]
+    assert items[-1]["outcome"] == "failed"
+    # 同一个目录重新跑：清空，不和上一次的记录混在一起
+    _ = run_loop(toy(), iterations=1, run_dir=tmp_path)
+    assert len(_timeline(tmp_path)) == len(STAGE_ORDER)
 
 
 def test_no_run_dir_no_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -284,6 +329,75 @@ def test_plugin_error_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 # ---------- HTTP ----------
 
 
+def _segs(tl: Payload) -> list[dict[str, object]]:
+    return cast("list[dict[str, object]]", tl["segments"])
+
+
+def test_loop_timeline_precise(tmp_path: Path) -> None:
+    _ = run_loop(toy(), iterations=2, run_dir=tmp_path)
+    tl = data.loop_timeline(tmp_path, datetime.now(UTC))
+    assert tl["estimated"] is False
+    segs = _segs(tl)
+    assert len(segs) == 2 * len(STAGE_ORDER)
+    assert all(x["outcome"] == "ok" and x["end"] for x in segs)
+
+
+def test_loop_timeline_running_and_lost_stage(tmp_path: Path) -> None:
+    _ = run_loop(toy(), iterations=1, run_dir=tmp_path)
+    now = datetime.now(UTC)
+    s = _status(tmp_path)
+    s.update(
+        state="running",
+        iteration=1,
+        stage="observe",
+        stage_started_at=(now - timedelta(seconds=30)).isoformat(),
+        heartbeat_at=now.isoformat(),
+        pid=os.getpid(),
+        host=socket.gethostname(),
+    )
+    _ = (tmp_path / STATUS_FILE).write_text(dump(s))
+    last = _segs(data.loop_timeline(tmp_path, now))[-1]
+    assert (last["iteration"], last["stage"], last["outcome"], last["end"]) == (
+        1,
+        "observe",
+        "running",
+        None,
+    )
+    # 心跳太久没更新：失联，结束时间画到最后一次心跳
+    later = now + timedelta(hours=1)
+    last = _segs(data.loop_timeline(tmp_path, later))[-1]
+    assert last["outcome"] == "lost"
+    assert datetime.fromisoformat(str(last["end"])) == now.replace(
+        microsecond=now.microsecond // 1000 * 1000
+    )
+
+
+def test_loop_timeline_estimated_for_old_runs(tmp_path: Path) -> None:
+    _ = run_loop(toy(), iterations=2, run_dir=tmp_path)
+    (tmp_path / TIMELINE_FILE).unlink()
+    s = _status(tmp_path)
+    del s["stage_started_at"]
+    _ = (tmp_path / STATUS_FILE).write_text(dump(s))
+    tl = data.loop_timeline(tmp_path, datetime.now(UTC))
+    assert tl["estimated"] is True
+    segs = _segs(tl)
+    assert [(x["iteration"], x["stage"]) for x in segs] == [
+        (i, st.value) for i in range(2) for st in STAGE_ORDER
+    ]
+    # 没有 status.yaml 的更旧的 run 也能估计
+    (tmp_path / STATUS_FILE).unlink()
+    assert len(_segs(data.loop_timeline(tmp_path, datetime.now(UTC)))) == 2 * len(STAGE_ORDER)
+
+
+def test_loop_timeline_truncated_file_falls_back(tmp_path: Path) -> None:
+    _ = run_loop(toy(), iterations=1, run_dir=tmp_path)
+    with (tmp_path / TIMELINE_FILE).open("a") as f:
+        _ = f.write("- iteration: 1\n  stage: [obs")  # 追加到一半被杀
+    tl = data.loop_timeline(tmp_path, datetime.now(UTC))
+    assert tl["estimated"] is True
+    assert len(_segs(tl)) == len(STAGE_ORDER)
+
+
 def _get(port: int, path: str) -> tuple[int, bytes]:
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     try:
@@ -313,6 +427,11 @@ def test_server_endpoints(tmp_path: Path) -> None:
         # 只认扫描到的 id，不接受路径
         code, _body = _get(port, "/api/loop?id=../../etc/passwd")
         assert code == 404
+        code, body = _get(port, f"/api/timeline?ids={lid},nope")
+        assert code == 200
+        tl = cast("dict[str, dict[str, dict[str, list[object]]]]", json.loads(body))
+        assert list(tl["loops"]) == [lid]
+        assert len(tl["loops"][lid]["segments"]) == 2 * len(STAGE_ORDER)
     finally:
         server.shutdown()
         server.server_close()
