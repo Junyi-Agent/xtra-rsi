@@ -36,12 +36,12 @@ loop 的运行产物只有 `iter-<n>/<stage>.yaml`，阶段跑完才写。下游
 `rsi viz [目录...] [--host 127.0.0.1] [--port 8765]`：只读的本地 HTTP 服务 + 单文件页面（无外部依赖、无构建步骤）。
 
 - 扫描目录里的 loop（含 `status.yaml` 或 `iter-*/` 的目录）和节点表（含 `<id>/node.yaml` 的目录），不进入 `workspace/`、`harness/`、隐藏目录。没有 `status.yaml` 的旧 run 也能显示（状态记为「无状态」）。
-- 页面是可平移缩放的画布，按缩放程度显示不同细节：远景每个 loop 一张卡片（标题、状态、目标、主指标）；中景是五个阶段的环（当前阶段高亮）、指标、曲线；近景是「每轮 × 五个阶段」的格子；点击打开抽屉看阶段输出全文和阶段内部过程。节点表画成树。
+- 页面是可平移缩放的画布，按缩放程度显示不同细节：远景每个 loop 一张卡片（标题、状态、目标、主指标）；中景是五个阶段的环（当前阶段高亮）、指标、曲线；近景是「每轮 × 五个阶段」的格子；点击打开抽屉看阶段输出全文和阶段内部过程。节点表画成树。支持触屏：单指平移、双指缩放、双击（两次轻点）聚焦。状态后面括号里附时间（运行中 / 失联是最后一次心跳，已结束是最后更新），不单列心跳。
 - 服务只读扫描到的目录，按 id 取 loop，不接受任意路径；默认只监听 127.0.0.1。远程机器用 ssh 端口转发。
 
 ### 下游插件
 
-entry point `xtra_rsi.viz`：`describe(loop_dir: Path, *, detail: bool) -> Payload | None`。不认识的 loop 返回 None。可返回 `title`、`subtitle`、`group`、`goal`、`kpis`、`series`、`stage_notes`，以及 `detail=True` 时的 `inner`（阶段内部过程，例如被测 agent 的工具调用）。字段格式见 `xtra_rsi.viz.data` 的模块文档。插件报错显示在卡片上，不影响其他 loop。
+entry point `xtra_rsi.viz`：`describe(loop_dir: Path, *, detail: bool) -> Payload | None`。不认识的 loop 返回 None。可返回 `title`、`subtitle`、`group`、`goal`、`kpis`、`series`、`stage_notes`，以及 `detail=True` 时的 `inner`（阶段内部过程，例如被测 agent 的工具调用；可以按会话分块，标明每个会话是否从头开始、开始时拿到了什么输入）。字段格式见 `xtra_rsi.viz.data` 的模块文档。插件报错显示在卡片上，不影响其他 loop。
 
 ## 后果
 
